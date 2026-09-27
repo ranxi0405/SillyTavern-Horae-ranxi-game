@@ -1866,7 +1866,12 @@
         "rpgArtsBeast": "어수",
         "rpgArtsHerb": "영식",
         "rpgArtsUntrained": "미입문",
-        "noShenTong": "신통 없음"
+        "noShenTong": "신통 없음",
+        "rpgOverviewRealm": "경지",
+        "rpgOverviewCultivation": "수위",
+        "rpgOverviewLifespan": "수명",
+        "rpgOverviewAge": "나이",
+        "rpgOverviewLifespanMax": "수명 상한"
     },
     "npcFields": {
         "gender": "성별",

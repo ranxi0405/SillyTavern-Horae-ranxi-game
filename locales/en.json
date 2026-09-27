@@ -1955,7 +1955,12 @@
         "rpgArtsBeast": "Beast Taming",
         "rpgArtsHerb": "Herb Cultivation",
         "rpgArtsUntrained": "Untrained",
-        "noShenTong": "No divine abilities"
+        "noShenTong": "No divine abilities",
+        "rpgOverviewRealm": "Realm",
+        "rpgOverviewCultivation": "Cultivation",
+        "rpgOverviewLifespan": "Lifespan",
+        "rpgOverviewAge": "Age",
+        "rpgOverviewLifespanMax": "Lifespan Max"
     },
     "npcFields": {
         "gender": "Gender",

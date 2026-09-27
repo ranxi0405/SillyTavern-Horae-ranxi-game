@@ -1886,7 +1886,12 @@
         "rpgArtsBeast": "御獣",
         "rpgArtsHerb": "霊植",
         "rpgArtsUntrained": "未入門",
-        "noShenTong": "神通なし"
+        "noShenTong": "神通なし",
+        "rpgOverviewRealm": "境界",
+        "rpgOverviewCultivation": "修為",
+        "rpgOverviewLifespan": "寿命",
+        "rpgOverviewAge": "年齢",
+        "rpgOverviewLifespanMax": "寿命上限"
     },
     "npcFields": {
         "gender": "性別",

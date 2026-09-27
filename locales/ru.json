@@ -1871,7 +1871,12 @@
         "rpgArtsBeast": "Укрощение зверей",
         "rpgArtsHerb": "Выращивание трав",
         "rpgArtsUntrained": "Не обучен",
-        "noShenTong": "Нет способностей"
+        "noShenTong": "Нет способностей",
+        "rpgOverviewRealm": "Царство",
+        "rpgOverviewCultivation": "Культивация",
+        "rpgOverviewLifespan": "Продолжительность жизни",
+        "rpgOverviewAge": "Возраст",
+        "rpgOverviewLifespanMax": "Макс. продолжительность"
     },
     "npcFields": {
         "gender": "Пол",

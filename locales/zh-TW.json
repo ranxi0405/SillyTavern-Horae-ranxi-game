@@ -508,7 +508,12 @@
         "rpgArtsBeast": "御獸",
         "rpgArtsHerb": "靈植",
         "rpgArtsUntrained": "未入門",
-        "noShenTong": "暫無神通"
+        "noShenTong": "暫無神通",
+        "rpgOverviewRealm": "境界",
+        "rpgOverviewCultivation": "修為",
+        "rpgOverviewLifespan": "壽元",
+        "rpgOverviewAge": "年齡",
+        "rpgOverviewLifespanMax": "壽元上限"
     },
     "toast": {
         "saveSuccess": "儲存成功！",
