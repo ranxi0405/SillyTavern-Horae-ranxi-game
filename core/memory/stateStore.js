@@ -504,6 +504,126 @@ export class StateStore {
             }
         }
     }
+
+    /**
+     * 从所有消息重建 State（从 rebuildRpgData 搬运）
+     */
+    rebuild() {
+        const manager = this.manager;
+        const chat = manager.getChat();
+        if (!chat?.length) return;
+        const first = chat[0];
+        if (!first.horae_meta) first.horae_meta = createEmptyMeta();
+        if (!first.horae_meta.rpg) first.horae_meta.rpg = {};
+        const rpg = first.horae_meta.rpg;
+
+        // ── 从 _rpgConfigs 权威来源读取 config，fallback 到 rpg 内部（旧数据迁移） ──
+        const cfgs = first.horae_meta._rpgConfigs || {};
+        const repCfg = cfgs.reputationConfig || rpg.reputationConfig || { categories: [], _deletedCategories: [] };
+        const eqCfg = cfgs.equipmentConfig || rpg.equipmentConfig || { locked: false, perChar: {} };
+        const curCfg = cfgs.currencyConfig || rpg.currencyConfig || { denominations: [] };
+        const shs = cfgs.strongholds || rpg.strongholds || [];
+        const delShs = cfgs._deletedStrongholds || rpg._deletedStrongholds || [];
+        const delSkills = cfgs._deletedSkills || rpg._deletedSkills || [];
+        const delCurrencies = cfgs._deletedCurrencies || rpg._deletedCurrencies || [];
+
+        // ── 保留用户手动数据 ──
+        const userSkills = {};
+        for (const [owner, arr] of Object.entries(rpg.skills || {})) {
+            const ua = (arr || []).filter(s => s._userAdded);
+            if (ua.length) userSkills[owner] = ua;
+        }
+        const userAttrs = rpg.attributes || {};
+        const oldReputation = rpg.reputation ? JSON.parse(JSON.stringify(rpg.reputation)) : {};
+        const oldLevels = rpg.levels ? JSON.parse(JSON.stringify(rpg.levels)) : {};
+        const oldXp = rpg.xp ? JSON.parse(JSON.stringify(rpg.xp)) : {};
+        const oldCurrency = rpg.currency ? JSON.parse(JSON.stringify(rpg.currency)) : {};
+
+        // ── 只重置可重放的数据字段 ──
+        rpg.bars = {};
+        rpg.status = {};
+        rpg.skills = {};
+        rpg.attributes = { ...userAttrs };
+        rpg.reputation = {};
+        rpg.equipment = {};
+        rpg.levels = {};
+        rpg.xp = {};
+        rpg.currency = {};
+
+        // ── config 从权威来源写入 rpg（供 _mergeRpgData 使用） ──
+        rpg.reputationConfig = repCfg;
+        rpg.equipmentConfig = eqCfg;
+        rpg.currencyConfig = curCfg;
+        rpg._deletedSkills = delSkills;
+        rpg._deletedCurrencies = delCurrencies;
+        rpg.strongholds = JSON.parse(JSON.stringify(shs));
+        rpg._deletedStrongholds = JSON.parse(JSON.stringify(delShs));
+
+        // ── 从所有消息重放 _rpgChanges ──
+        for (let i = 0; i < chat.length; i++) {
+            const changes = chat[i]?.horae_meta?._rpgChanges;
+            if (changes) this.applyChanges(changes, { readOnly: true, messageIndex: i });
+        }
+
+        // ── 回填用户手动添加的技能 ──
+        for (const [owner, arr] of Object.entries(userSkills)) {
+            if (!rpg.skills[owner]) rpg.skills[owner] = [];
+            for (const sk of arr) {
+                if (!rpg.skills[owner].some(s => s.name === sk.name)) rpg.skills[owner].push(sk);
+            }
+        }
+        for (const del of delSkills) {
+            if (rpg.skills[del.owner]) {
+                rpg.skills[del.owner] = rpg.skills[del.owner].filter(s => s.name !== del.name);
+                if (!rpg.skills[del.owner].length) delete rpg.skills[del.owner];
+            }
+        }
+
+        // ── 回填手动设置的等级/经验/货币；已有回放值优先，避免覆盖历史变化 ──
+        for (const [owner, val] of Object.entries(oldLevels)) {
+            if (rpg.levels[owner] === undefined) rpg.levels[owner] = val;
+        }
+        for (const [owner, val] of Object.entries(oldXp)) {
+            if (rpg.xp[owner] === undefined) rpg.xp[owner] = val;
+        }
+        for (const [owner, coins] of Object.entries(oldCurrency)) {
+            if (!rpg.currency[owner]) rpg.currency[owner] = {};
+            for (const [name, val] of Object.entries(coins || {})) {
+                if (rpg.currency[owner][name] === undefined) rpg.currency[owner][name] = val;
+            }
+        }
+
+        // ── 回填用户设置的声望 ──
+        const deletedRepCats = new Set(rpg.reputationConfig?._deletedCategories || []);
+        const validRepCats = new Set((rpg.reputationConfig?.categories || []).map(c => c.name));
+        for (const [owner, cats] of Object.entries(oldReputation)) {
+            if (!rpg.reputation[owner]) rpg.reputation[owner] = {};
+            for (const [catName, data] of Object.entries(cats)) {
+                if (deletedRepCats.has(catName)) continue;
+                if (validRepCats.size > 0 && !validRepCats.has(catName)) continue;
+                if (!rpg.reputation[owner][catName]) {
+                    rpg.reputation[owner][catName] = data;
+                } else {
+                    rpg.reputation[owner][catName].subItems = data.subItems || {};
+                    if (data._userEdited) {
+                        rpg.reputation[owner][catName].value = data.value;
+                        rpg.reputation[owner][catName]._userEdited = true;
+                    }
+                }
+            }
+        }
+
+        // ── 同步回 _rpgConfigs 权威存储 ──
+        first.horae_meta._rpgConfigs = {
+            reputationConfig: rpg.reputationConfig,
+            equipmentConfig: rpg.equipmentConfig,
+            currencyConfig: rpg.currencyConfig,
+            _deletedSkills: rpg._deletedSkills,
+            _deletedCurrencies: rpg._deletedCurrencies,
+            strongholds: rpg.strongholds,
+            _deletedStrongholds: rpg._deletedStrongholds,
+        };
+    }
 }
 
 export function createStateStore(manager) {
