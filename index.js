@@ -7626,6 +7626,47 @@ function updateRpgDisplay() {
             html += `<div class="horae-rpg-overview-section">${barsHtml}</div>`;
         }
 
+        // ── 境界 / 修为 / 寿元（仅在 rpg.realm.name 存在时显示）──
+        if (rpg.realm && typeof rpg.realm === 'object'
+            && typeof rpg.realm.name === 'string' && rpg.realm.name.length > 0) {
+
+            const realmName = rpg.realm.name;
+            const realmPhase = rpg.realm.phase;
+            let realmHtml = '';
+
+            // 境界显示：X·Y 或 X（飞升 / 无 phase）
+            const realmDisplay = (realmName === '飞升' || !realmPhase)
+                ? realmName
+                : `${realmName}·${realmPhase}`;
+            realmHtml += `<div class="horae-rpg-overview-row"><span class="horae-rpg-overview-label">${t('ui.rpgOverviewRealm')}</span><span class="horae-rpg-overview-val">${escapeHtml(realmDisplay)}</span></div>`;
+
+            // 修为：cur / max
+            if (Array.isArray(rpg.cultivation) && rpg.cultivation.length >= 2) {
+                const cur = rpg.cultivation[0];
+                const max = rpg.cultivation[1];
+                if (Number.isSafeInteger(cur) && Number.isSafeInteger(max)) {
+                    realmHtml += `<div class="horae-rpg-overview-row"><span class="horae-rpg-overview-label">${t('ui.rpgOverviewCultivation')}</span><span class="horae-rpg-overview-val">${cur}/${max}</span></div>`;
+                }
+            }
+
+            // 寿元 / 年龄
+            const age = rpg.age;
+            const lifespan = rpg.lifespan;
+            const hasAge = typeof age === 'number' && Number.isSafeInteger(age) && age >= 0;
+            const hasLifespan = typeof lifespan === 'number' && Number.isSafeInteger(lifespan) && lifespan >= 0;
+            if (hasAge && hasLifespan) {
+                realmHtml += `<div class="horae-rpg-overview-row"><span class="horae-rpg-overview-label">${t('ui.rpgOverviewLifespan')}</span><span class="horae-rpg-overview-val">${age}/${lifespan}</span></div>`;
+            } else if (hasAge) {
+                realmHtml += `<div class="horae-rpg-overview-row"><span class="horae-rpg-overview-label">${t('ui.rpgOverviewAge')}</span><span class="horae-rpg-overview-val">${age}</span></div>`;
+            } else if (hasLifespan) {
+                realmHtml += `<div class="horae-rpg-overview-row"><span class="horae-rpg-overview-label">${t('ui.rpgOverviewLifespanMax')}</span><span class="horae-rpg-overview-val">${lifespan}</span></div>`;
+            }
+
+            if (realmHtml) {
+                html += `<div class="horae-rpg-overview-section">${realmHtml}</div>`;
+            }
+        }
+
         // ── 神识（独立于神念，仅在 rpg.spirit 有效时显示）──
         const spirit = rpg.spirit;
         if (spirit && typeof spirit === 'object') {
