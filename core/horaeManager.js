@@ -2369,12 +2369,20 @@ if (sendCharacters) {
 
         // 解析 RPG 数据
         if (rpgMatches.length > 0) {
-            result.rpg = { bars: {}, status: {}, skills: [], removedSkills: [], attributes: {}, reputation: {}, equipment: [], unequip: [], levels: {}, xp: {}, currency: [], baseChanges: [], arts: [], shenTong: [] };
+            result.rpg = { bars: {}, status: {}, skills: [], removedSkills: [], attributes: {}, reputation: {}, equipment: [], unequip: [], levels: {}, xp: {}, currency: [], baseChanges: [], arts: [], shenTong: [], realm: null, cultivation: null, age: null, lifespan: null };
             const rm = [...rpgMatches].reverse().find(m => String(m[1] || '').trim()) || rpgMatches[rpgMatches.length - 1];
             const rpgContent = rm[1].trim();
             for (const rpgLine of rpgContent.split('\n')) {
                 const trimmed = rpgLine.trim();
                 if (trimmed) this._parseRpgLine(trimmed, result.rpg);
+            }
+            // ★ 合并 _realmTmp 到 result.rpg.realm
+            if (result.rpg._realmTmp) {
+                const _tmp = result.rpg._realmTmp;
+                if (_tmp._seen) {
+                    result.rpg.realm = { name: _tmp.name || null, phase: _tmp.phase || null };
+                }
+                delete result.rpg._realmTmp;
             }
         }
 
@@ -2492,7 +2500,11 @@ if (sendCharacters) {
                 || (r.baseChanges || []).length > 0
                 || (r.arts || []).length > 0
                 || (r.shenTong || []).length > 0
-                || (r.spirit && (r.spirit.tier || typeof r.spirit.xp === 'number'));
+                || (r.spirit && (r.spirit.tier || typeof r.spirit.xp === 'number'))
+                || (r.realm && (r.realm.name || r.realm.phase))
+                || (Array.isArray(r.cultivation) && r.cultivation.length >= 2)
+                || (typeof r.age === 'number')
+                || (typeof r.lifespan === 'number');
             if (hasContent) {
                 meta._rpgChanges = parsed.rpg;
             }
@@ -2824,6 +2836,80 @@ if (sendCharacters) {
                         console.warn('[Horae][spirit] 非法 xp（非十进制非负整数），忽略:', val);
                     }
                 }
+            }
+            return;
+        }
+        // realm:大境界名（炼气/筑基/.../登仙/飞升）
+        if (line.startsWith('realm:')) {
+            if (!rpg._realmTmp) rpg._realmTmp = { name: null, phase: null, _seen: false };
+            const val = line.substring(6).trim();
+            const VALID_NAMES = ['炼气', '筑基', '结晶', '金丹', '具灵', '元婴', '化神', '悟道', '羽化', '登仙', '飞升'];
+            if (VALID_NAMES.includes(val)) {
+                rpg._realmTmp.name = val;
+                rpg._realmTmp._seen = true;
+            } else {
+                console.warn('[Horae][realm] 非法 name，忽略:', val);
+            }
+            return;
+        }
+        // realm_phase:阶段（初期/中期/后期/圆满）
+        if (line.startsWith('realm_phase:')) {
+            if (!rpg._realmTmp) rpg._realmTmp = { name: null, phase: null, _seen: false };
+            const val = line.substring(12).trim();
+            const VALID_PHASES = ['初期', '中期', '后期', '圆满'];
+            if (VALID_PHASES.includes(val)) {
+                rpg._realmTmp.phase = val;
+                rpg._realmTmp._seen = true;
+            } else {
+                console.warn('[Horae][realm_phase] 非法 phase，忽略:', val);
+            }
+            return;
+        }
+        // cultivation:当前修为/上限
+        if (line.startsWith('cultivation:')) {
+            const str = line.substring(12).trim();
+            const m = str.match(/^(\d+)\s*\/\s*(\d+)$/);
+            if (m) {
+                const cur = Number(m[1]);
+                const max = Number(m[2]);
+                if (Number.isSafeInteger(cur) && Number.isSafeInteger(max)) {
+                    rpg.cultivation = [cur, max];
+                    if (cur > max) console.warn('[Horae][cultivation] cur > max，保留:', cur, max);
+                } else {
+                    console.warn('[Horae][cultivation] 数值超出安全整数，忽略:', str);
+                }
+            } else {
+                console.warn('[Horae][cultivation] 非法格式，忽略:', str);
+            }
+            return;
+        }
+        // age:当前年龄
+        if (line.startsWith('age:')) {
+            const val = line.substring(4).trim();
+            if (/^\d+$/.test(val)) {
+                const n = Number(val);
+                if (Number.isSafeInteger(n)) {
+                    rpg.age = n;
+                } else {
+                    console.warn('[Horae][age] 超出安全整数，忽略:', val);
+                }
+            } else {
+                console.warn('[Horae][age] 非法值，忽略:', val);
+            }
+            return;
+        }
+        // lifespan:当前寿元上限（含境界基础 + 永久加成）
+        if (line.startsWith('lifespan:')) {
+            const val = line.substring(9).trim();
+            if (/^\d+$/.test(val)) {
+                const n = Number(val);
+                if (Number.isSafeInteger(n)) {
+                    rpg.lifespan = n;
+                } else {
+                    console.warn('[Horae][lifespan] 超出安全整数，忽略:', val);
+                }
+            } else {
+                console.warn('[Horae][lifespan] 非法值，忽略:', val);
             }
             return;
         }
@@ -4119,7 +4205,11 @@ generateSystemPromptAddition() {
             ? '\n\n【功法分类】\nskill:归属|名称|等级|描述|分类\n分类枚举：main(主修) / attack(攻击) / movement(身法) / body(炼体) / spirit(神识功法) / secret(秘术) / other(其他)\n分类字段可省略（旧格式兼容），缺省归 other。'
             : '\n\n[Skill Category]\nskill:owner|name|level|desc|category\nCategories: main/attack/movement/body/spirit/secret/other';
 
-        return '\n' + base + spiritNote + craftNote + shenTongNote + skillCategoryNote;
+        const realmNote = isZh
+            ? '\n\n【境界 / 修为 / 寿元——仅变化时输出】\nrealm:大境界名（炼气/筑基/结晶/金丹/具灵/元婴/化神/悟道/羽化/登仙/飞升）\nrealm_phase:阶段（初期/中期/后期/圆满；飞升为空）\ncultivation:当前修为/上限（两个非负整数）\nage:当前年龄（非负整数）\nlifespan:当前寿元上限（非负整数，含境界基础 + 已有永久加成）\n变化时才输出，无变化不输出。\nrealm 和 realm_phase 的顺序可任意，两者一起才构成完整境界。\nrealm 单独输出时 phase 为空（不继承旧阶段）。\nrealm_phase 单独输出时更新已有境界的阶段。\n突破时 lifespan 必须考虑已有永久加成：\n  新寿元上限 = 新境界基础上限 + (旧寿元上限 - 旧境界基础上限)\n境界名必须使用标准名称，不得使用其他写法。'
+            : '\n\n[Realm / Cultivation / Lifespan — output only on change]\nrealm:realm name (炼气/筑基/结晶/金丹/具灵/元婴/化神/悟道/羽化/登仙/飞升)\nrealm_phase:phase (初期/中期/后期/圆满; empty for 飞升)\ncultivation:current/max (two non-negative integers)\nage:current age (non-negative integer)\nlifespan:current lifespan cap (non-negative integer; includes realm base + permanent bonuses)\nOutput only when changed.\nrealm and realm_phase order is arbitrary; both together form the complete realm.\nrealm alone means phase is null (do NOT inherit old phase).\nrealm_phase alone updates the phase of the existing realm.\nOn breakthrough, lifespan must account for existing permanent bonuses:\n  new lifespan = new realm base + (old lifespan - old realm base)\nRealm name MUST use canonical names only.';
+
+        return '\n' + base + spiritNote + craftNote + shenTongNote + skillCategoryNote + realmNote;
     }
 
     /** RPG 默认提示词（资源优先，支持分段占位符） */
