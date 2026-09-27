@@ -2489,7 +2489,10 @@ if (sendCharacters) {
                 || Object.keys(r.levels || {}).length > 0
                 || Object.keys(r.xp || {}).length > 0
                 || (r.currency || []).length > 0
-                || (r.baseChanges || []).length > 0;
+                || (r.baseChanges || []).length > 0
+                || (r.arts || []).length > 0
+                || (r.shenTong || []).length > 0
+                || (r.spirit && (r.spirit.tier || typeof r.spirit.xp === 'number'));
             if (hasContent) {
                 meta._rpgChanges = parsed.rpg;
             }
