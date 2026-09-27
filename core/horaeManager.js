@@ -1865,6 +1865,43 @@ if (sendCharacters) {
             }
         }
         
+        // 已知事实（Facts）
+        const factsSection = this._generateFactsSection();
+        if (factsSection) lines.push(factsSection);
+
+        return lines.join('\n');
+    }
+
+    /** 生成"已知事实"段（从 chat[0].horae_meta.facts 读取 active 条目） */
+    _generateFactsSection() {
+        const facts = this.getChat()?.[0]?.horae_meta?.facts || [];
+        const active = facts.filter(f => f.status === 'active');
+        if (active.length === 0) return '';
+
+        const lang = this._getAiOutputLang();
+        const isZh = lang === 'zh-CN' || lang === 'zh-TW';
+
+        const lines = [];
+        lines.push(isZh ? '\n[已知事实]' : '\n[Known Facts]');
+
+        const groups = { public: [], hidden: [], gm_only: [] };
+        for (const f of active) {
+            const vis = f.visibility || 'public';
+            (groups[vis] || groups.public).push(f);
+        }
+
+        for (const f of groups.public) {
+            lines.push(`· ${f.subject} | ${f.predicate} = ${f.object}`);
+        }
+        for (const f of groups.hidden) {
+            const prefix = isZh ? '[部分知情]' : '[partial]';
+            lines.push(`· ${prefix} ${f.subject} | ${f.predicate} = ${f.object}`);
+        }
+        for (const f of groups.gm_only) {
+            const prefix = isZh ? '[仅天道]' : '[GM-only]';
+            lines.push(`· ${prefix} ${f.subject} | ${f.predicate} = ${f.object}`);
+        }
+
         return lines.join('\n');
     }
 
