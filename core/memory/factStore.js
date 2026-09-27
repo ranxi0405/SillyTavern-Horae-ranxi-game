@@ -1,34 +1,39 @@
 /**
- * Horae FactStore v0.1
+ * Horae FactStore v0.4（最终版）
  *
- * 职责：
- *   - 存储长期确认事实（结构化）
- *   - 提供去重的 active facts 读取
- *   - 支持 supersede（旧事实被新事实取代）
+ * Fact Action Record v0.4 契约：
+ *   - action: 'add' | 'supersede' | 'invalidate'
+ *   - action 缺失 / 非法 → 默认 add
+ *   - supersede / invalidate 需要 target { subject, predicate, object }
+ *   - target 校验失败（缺失/找不到/匹配多个/subject-predicate 不匹配）
+ *     → 降级为 add（宁可冗余，不可误删）
+ *   - 永不物理删除，全部保留 history
  *
- * 设计原则：
- *   - Facts 独立于 narrative：narrative 是叙述，facts 是结论
- *   - Facts 去重更新：同一 (subject, predicate) 只有最新的 active
- *   - Facts 恒定大小：Prompt 注入时只读 active
- *   - 不改 createEmptyMeta，惰性初始化 chat[0].horae_meta.facts
+ * 关键原则：
+ *   - 程序只验证，不替 AI 猜
+ *   - 不根据 predicate 名字判断单值/多值
+ *   - 不物理删除历史
  *
  * Fact 结构：
  *   {
- *     id: 'f_xxx',
- *     subject: '陆离',
- *     predicate: '身份',
- *     object: '天剑宗卧底',
- *     status: 'active' | 'superseded' | 'resolved' | 'invalidated',
+ *     id, subject, predicate, object,
+ *     status: 'active' | 'superseded' | 'invalidated',
  *     confidence: 'confirmed' | 'inferred',
- *     since: { storyDate: '946/3/15' },
- *     source: 'autoSummary:as_xxx',
+ *     visibility: 'public' | 'hidden' | 'gm_only',
+ *     since,
+ *     source,
+ *     sourceEventIds: [],
  *     supersededBy: null,
+ *     invalidatedAt: null,
+ *     createdAt, updatedAt,
  *   }
  */
 
 const DEFAULT_STATUS = 'active';
 const DEFAULT_VISIBILITY = 'public';
+const DEFAULT_ACTION = 'add';
 const VISIBILITY_VALUES = ['public', 'hidden', 'gm_only'];
+const ACTION_VALUES = ['add', 'supersede', 'invalidate'];
 
 export class FactStore {
     constructor(manager) {
@@ -36,7 +41,6 @@ export class FactStore {
         this.manager = manager;
     }
 
-    /** 惰性获取 facts 存储槽（不修改 createEmptyMeta） */
     _ensureSlot() {
         const chat = this.manager.getChat?.();
         if (!chat?.length) return null;
@@ -47,14 +51,12 @@ export class FactStore {
         return chat[0].horae_meta.facts;
     }
 
-    /** 读取原始数组（深拷贝，防外部修改） */
     getAll() {
         const slot = this._ensureSlot();
         if (!slot) return [];
         return structuredClone(slot);
     }
 
-    /** 只读 active facts */
     getActive({ subject = null, predicate = null } = {}) {
         const all = this.getAll();
         return all.filter(f => {
@@ -65,10 +67,23 @@ export class FactStore {
         });
     }
 
-    /**
-     * 按可见性读取 active facts
-     * @param {string|string[]} filter - 'public' | 'hidden' | 'gm_only' | 数组 | 'all'
-     */
+    /** (subject, predicate) 下所有 active facts */
+    getAllFor(subject, predicate) {
+        return this.getActive({ subject, predicate });
+    }
+
+    /** (subject, predicate) 下 active 中最新一个（不是"唯一正确"） */
+    getLatest(subject, predicate) {
+        const list = this.getAllFor(subject, predicate);
+        if (list.length === 0) return null;
+        return list[list.length - 1];
+    }
+
+    /** subject 的所有 active facts */
+    getBySubject(subject) {
+        return this.getActive({ subject });
+    }
+
     getVisible(filter = 'all') {
         const active = this.getActive();
         if (filter === 'all') return active;
@@ -76,9 +91,6 @@ export class FactStore {
         return active.filter(f => allowed.has(f.visibility || DEFAULT_VISIBILITY));
     }
 
-    /**
-     * 向后兼容：读取旧数据时，没有 visibility 字段的视为 public
-     */
     normalizeLegacy() {
         const slot = this._ensureSlot();
         if (!slot) return 0;
@@ -92,27 +104,89 @@ export class FactStore {
         return fixed;
     }
 
+    static _sameTriple(f, triple) {
+        return f.subject === triple.subject
+            && f.predicate === triple.predicate
+            && String(f.object) === String(triple.object);
+    }
+
+    /** 返回所有匹配的 active facts（数组，可能 0/1/多个） */
+    _findActiveByTriple(slot, triple) {
+        return slot.filter(f => f.status === DEFAULT_STATUS && FactStore._sameTriple(f, triple));
+    }
+
     /**
      * 提交一条 fact
-     * @returns {object} 提交后的 fact
+     * @param {object} opts
+     *   - subject, predicate, object 必填
+     *   - action: 'add' | 'supersede' | 'invalidate'
+     *   - target: { subject, predicate, object }（supersede / invalidate 需要）
+     *   - confidence, visibility, since, source, sourceEventIds
      */
-    commit({ subject, predicate, object, confidence = 'confirmed', visibility = DEFAULT_VISIBILITY, since = null, source = '' }) {
+    commit({
+        subject, predicate, object,
+        action = DEFAULT_ACTION,
+        target = null,
+        confidence = 'confirmed',
+        visibility = DEFAULT_VISIBILITY,
+        since = null,
+        source = '',
+        sourceEventIds = [],
+    }) {
         if (!subject || !predicate || object === undefined || object === null) {
             throw new Error('FactStore.commit: subject/predicate/object required');
         }
-
-        // visibility 规范化（非法值回退到 public）
         if (!VISIBILITY_VALUES.includes(visibility)) visibility = DEFAULT_VISIBILITY;
+        if (!ACTION_VALUES.includes(action)) action = DEFAULT_ACTION;
 
         const slot = this._ensureSlot();
         if (!slot) throw new Error('FactStore.commit: no chat slot');
 
-        // 查找是否有相同 (subject, predicate) 的 active fact
-        const existingIdx = slot.findIndex(
-            f => f.status === DEFAULT_STATUS
+        const now = new Date().toISOString();
+
+        // 校验 supersede / invalidate 的 target
+        let effectiveAction = action;
+        let validatedTarget = null;
+
+        if (action === 'supersede' || action === 'invalidate') {
+            if (!target || !target.subject || !target.predicate || target.object === undefined) {
+                console.warn('[FactStore] action=', action, '缺少 target，降级为 add');
+                effectiveAction = 'add';
+            } else {
+                const matches = this._findActiveByTriple(slot, target);
+                if (matches.length === 0) {
+                    console.warn('[FactStore] target 未找到，降级为 add:', JSON.stringify(target));
+                    effectiveAction = 'add';
+                } else if (matches.length > 1) {
+                    console.warn('[FactStore] target 匹配到', matches.length, '个 active，降级为 add:', JSON.stringify(target));
+                    effectiveAction = 'add';
+                } else {
+                    validatedTarget = matches[0];
+                    if (validatedTarget.subject !== subject || validatedTarget.predicate !== predicate) {
+                        console.warn('[FactStore] target subject/predicate 不匹配，降级为 add');
+                        effectiveAction = 'add';
+                        validatedTarget = null;
+                    }
+                }
+            }
+        }
+
+        // invalidate：只标失效，不新增
+        if (effectiveAction === 'invalidate') {
+            validatedTarget.status = 'invalidated';
+            validatedTarget.invalidatedAt = now;
+            validatedTarget.updatedAt = now;
+            return structuredClone(validatedTarget);
+        }
+
+        // 三元组幂等
+        const exact = slot.find(f =>
+            f.status === DEFAULT_STATUS
                 && f.subject === subject
                 && f.predicate === predicate
+                && String(f.object) === String(object)
         );
+        if (exact) return structuredClone(exact);
 
         const newFact = {
             id: 'f_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
@@ -124,29 +198,44 @@ export class FactStore {
             visibility,
             since: since || null,
             source: source || '',
+            sourceEventIds: Array.isArray(sourceEventIds) ? [...sourceEventIds] : [],
             supersededBy: null,
+            invalidatedAt: null,
+            createdAt: now,
+            updatedAt: now,
         };
 
-        if (existingIdx >= 0) {
-            const old = slot[existingIdx];
-            // 值相同则跳过（幂等）
-            if (String(old.object) === String(object) && old.confidence === confidence && (old.visibility || DEFAULT_VISIBILITY) === visibility) {
-                return structuredClone(old);
-            }
-            // 值不同 → 旧 fact superseded
-            old.status = 'superseded';
-            old.supersededBy = newFact.id;
+        // supersede：标旧 + 加新
+        if (effectiveAction === 'supersede' && validatedTarget) {
+            validatedTarget.status = 'superseded';
+            validatedTarget.supersededBy = newFact.id;
+            validatedTarget.updatedAt = now;
         }
 
         slot.push(newFact);
         return structuredClone(newFact);
     }
 
-    /**
-     * 批量提交
-     * @param {Array} factsList
-     * @returns {Array} 提交后的 fact 列表
-     */
+    /** 显式失效（不新增 fact） */
+    invalidate({ subject, predicate, object }) {
+        const slot = this._ensureSlot();
+        if (!slot) return null;
+        const matches = this._findActiveByTriple(slot, { subject, predicate, object });
+        if (matches.length === 0) {
+            console.warn('[FactStore] invalidate target 未找到');
+            return null;
+        }
+        if (matches.length > 1) {
+            console.warn('[FactStore] invalidate target 匹配到多个，放弃');
+            return null;
+        }
+        const now = new Date().toISOString();
+        matches[0].status = 'invalidated';
+        matches[0].invalidatedAt = now;
+        matches[0].updatedAt = now;
+        return structuredClone(matches[0]);
+    }
+
     commitBatch(factsList) {
         if (!Array.isArray(factsList)) return [];
         const results = [];
@@ -160,11 +249,7 @@ export class FactStore {
         return results;
     }
 
-    /**
-     * 显式 supersede（用于外部主动更新）
-     * @param {string} oldId
-     * @param {string} newId
-     */
+    /** 兼容旧 API（按 ID） */
     supersede(oldId, newId) {
         const slot = this._ensureSlot();
         if (!slot) return false;
@@ -172,10 +257,10 @@ export class FactStore {
         if (!old) return false;
         old.status = 'superseded';
         old.supersededBy = newId;
+        old.updatedAt = new Date().toISOString();
         return true;
     }
 
-    /** 统计信息（调试用） */
     stats() {
         const all = this.getAll();
         const byStatus = {};
