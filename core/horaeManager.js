@@ -1516,12 +1516,11 @@ if (sendCharacters) {
             const spirit = rpg.spirit;
             if (spirit && (spirit.tier || typeof spirit.xp === 'number')) {
                 if (!filterRpg || rpgAllowed.has(userName)) {
-                        const tierLabel = L('神识', 'Spirit', '神识', '신식', 'Дух');
-                        const xpLabel = L('累积', 'xp', '累積', '누적', 'накопл.');
-                        const tierVal = spirit.tier || '—';
-                        const xpVal = (typeof spirit.xp === 'number') ? spirit.xp : 0;
-                        lines.push(`${_ctxPre(userName, _cUoB)}${tierLabel}：${tierVal} · ${xpLabel} ${xpVal}`);
-                    }
+                    const tierLabel = L('神识', 'Spirit', '神识', '신식', 'Дух');
+                    const xpLabel = L('累积', 'xp', '累積', '누적', 'накопл.');
+                    const tierVal = spirit.tier || '—';
+                    const xpVal = (typeof spirit.xp === 'number') ? spirit.xp : 0;
+                    lines.push(`${_ctxPre(userName, _cUoB)}${tierLabel}：${tierVal} · ${xpLabel} ${xpVal}`);
                 }
             }
 
