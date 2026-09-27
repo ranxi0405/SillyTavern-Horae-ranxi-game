@@ -16772,6 +16772,37 @@ function _collectAutoResummaryPayload(chat, plan, cutoff) {
             level: `摘要L${s.depth}`,
             summary: cardText,
         });
+
+        // ★ 追加关键/重要原始事件，防止 L1 摘要遗漏信息
+        const _rawEvents = s.entry?.originalEvents || [];
+        const _keyEvents = _rawEvents
+            .filter(item => {
+                const lv = item?.event?.level;
+                if (lv !== '关键' && lv !== '重要') return false;
+                if (!item?.event?.summary) return false;
+                if (item?.event?.isSummary || item?.event?._summaryId) return false;
+                if (item?.event?._carryoverSeed) return false;
+                return true;
+            })
+            .sort((a, b) => (b.msgIdx ?? 0) - (a.msgIdx ?? 0))
+            .slice(0, 6);
+
+        for (const _item of _keyEvents) {
+            const _evt = _item.event;
+            const _evtDate = _item.timestamp?.story_date || date;
+            const _evtTime = _item.timestamp?.story_time || '';
+            const _rawKey = `raw|${s.id}|${_item.msgIdx}|${_item.evtIdx}|${_evt.summary}`;
+            if (eventSeen.has(_rawKey)) continue;
+            eventSeen.add(_rawKey);
+            eventRecords.push({
+                msgIdx: _item.msgIdx ?? anchorIdx,
+                date: _evtDate,
+                time: _evtTime,
+                level: `原始${_evt.level}`,
+                summary: _evt.summary,
+                _fromOriginal: true,
+            });
+        }
     }
 
     // 仅补充窗口内“未被任何活跃摘要覆盖”的原始事件
