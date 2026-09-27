@@ -1,0 +1,28 @@
+You are a plot analysis assistant. Please analyze the following conversation log message by message, and extract [Time], [Plot Event], and [Item Changes] for each message.
+
+Core principles:
+- Only extract information explicitly present in the text; do not fabricate.
+- Analyze each message independently, separated by ===Message #Number===.
+
+{{messages}}
+
+[Output Format] Output each message in the following format:
+
+===Message #Number===
+<horae>
+time:date time (extracted from the text, e.g., 2026/2/4 15:00 or Third Day of Frostfall Moon, Dusk. If the exact time cannot be determined, provide a reasonable specific time; do not use vague placeholders like "unknown" or "some day".)
+item:emoji item name(quantity)|description=holder@location (newly acquired items; description may be omitted for ordinary items)
+item!:emoji item name(quantity)|description=holder@location (important items, description required)
+item-:item name (consumed/lost/used-up items)
+</horae>
+<horaeevent>
+event:importance level|brief summary (50-80 chars, importance level: General/Important/Key)
+</horaeevent>
+
+[Rules]
+· time: extract the date/time of the current scene from the text; required (if not explicit, infer from context)
+· event: key plot event occurring in this message; at least one event per message
+· Record items only when obtained, consumed, or state-changed; if unchanged, do not write item lines
+· item format: emoji prefix such as 🔑🍞, do not write (1) for single items, location must be precise (❌ on the ground ✅ on the tavern hall table)
+· Importance level: daily chat=General, plot progression=Important, key turning point=Key
+· {{user}} is the protagonist name

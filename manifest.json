@@ -1,0 +1,12 @@
+{
+    "display_name": "Horae - 时光记忆 (冉汐修改版)",
+    "loading_order": 100,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "assets/styles/style.css",
+    "author": "SenriYuki (原作) / 冉汐 (修改)",
+    "version": "1.15.1-ranxi",
+    "homePage": "https://github.com/ranxi0405/SillyTavern-Horae-ranxi",
+    "auto_update": false
+}

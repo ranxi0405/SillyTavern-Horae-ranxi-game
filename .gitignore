@@ -1,0 +1,20 @@
+# 备份文件
+*.bak
+*.bak-*
+*.before-*
+*.backup
+
+# 临时脚本
+patch-*.cjs
+check-*.cjs
+scout-*.cjs
+clean-*.cjs
+verify*.cjs
+
+# 世界书副本（保留主文件）
+worldbook-v*.json
+
+# 系统
+.DS_Store
+Thumbs.db
+node_modules/
