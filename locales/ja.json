@@ -1873,7 +1873,10 @@
         "rpgSkillCatBody": "錬体",
         "rpgSkillCatSpirit": "神識",
         "rpgSkillCatSecret": "秘術",
-        "rpgSkillCatOther": "その他"
+        "rpgSkillCatOther": "その他",
+        "rpgTabOverview": "概要",
+        "rpgOverviewSpirit": "神識",
+        "rpgOverviewSpiritXp": "累積"
     },
     "npcFields": {
         "gender": "性別",

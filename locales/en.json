@@ -1942,7 +1942,10 @@
         "rpgSkillCatBody": "Body Refining",
         "rpgSkillCatSpirit": "Spirit",
         "rpgSkillCatSecret": "Secret",
-        "rpgSkillCatOther": "Other"
+        "rpgSkillCatOther": "Other",
+        "rpgTabOverview": "Overview",
+        "rpgOverviewSpirit": "Spirit",
+        "rpgOverviewSpiritXp": "xp"
     },
     "npcFields": {
         "gender": "Gender",

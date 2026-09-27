@@ -7605,6 +7605,63 @@ function updateRpgDisplay() {
         return html;
     }
 
+    /** 渲染主角总览 HTML */
+    function _buildOverviewHtml(name, rpg) {
+        const bars = rpg.bars?.[name] || {};
+        const attrs = rpg.attributes?.[name] || {};
+        const attrCfg = settings.rpgAttributeConfig || [];
+
+        let html = '<div class="horae-rpg-overview">';
+
+        // ── 状态条（固定 hp / mp / sp，不遍历 barCfg）──
+        const OVERVIEW_BAR_KEYS = ['hp', 'mp', 'sp'];
+        let barsHtml = '';
+        for (const key of OVERVIEW_BAR_KEYS) {
+            const val = bars[key];
+            if (!Array.isArray(val) || val.length < 2) continue;
+            const label = getRpgBarName(key, val[2]);
+            barsHtml += `<div class="horae-rpg-overview-row"><span class="horae-rpg-overview-label">${escapeHtml(label)}</span><span class="horae-rpg-overview-val">${val[0]}/${val[1]}</span></div>`;
+        }
+        if (barsHtml) {
+            html += `<div class="horae-rpg-overview-section">${barsHtml}</div>`;
+        }
+
+        // ── 神识（独立于神念，仅在 rpg.spirit 有效时显示）──
+        const spirit = rpg.spirit;
+        if (spirit && typeof spirit === 'object') {
+            const tierRaw = spirit.tier;
+            const xpRaw = spirit.xp;
+            const hasTier = typeof tierRaw === 'string' && tierRaw.length > 0;
+            const hasXp = typeof xpRaw === 'number' && Number.isSafeInteger(xpRaw) && xpRaw >= 0;
+
+            if (hasTier || hasXp) {
+                let valStr;
+                if (hasTier && hasXp) {
+                    valStr = `${tierRaw} · ${t('ui.rpgOverviewSpiritXp')} ${xpRaw}`;
+                } else if (hasTier) {
+                    valStr = tierRaw;
+                } else {
+                    valStr = `${t('ui.rpgOverviewSpiritXp')} ${xpRaw}`;
+                }
+                html += `<div class="horae-rpg-overview-section"><div class="horae-rpg-overview-row"><span class="horae-rpg-overview-label">${t('ui.rpgOverviewSpirit')}</span><span class="horae-rpg-overview-val">${escapeHtml(valStr)}</span></div></div>`;
+            }
+        }
+
+        // ── 五维属性（缺失值显示 ?）──
+        if (attrCfg.length > 0) {
+            let attrHtml = '';
+            for (const a of attrCfg) {
+                const v = attrs[a.key];
+                const vStr = (v === undefined || v === null) ? '?' : String(v);
+                attrHtml += `<div class="horae-rpg-overview-row"><span class="horae-rpg-overview-label">${escapeHtml(a.name)}</span><span class="horae-rpg-overview-val">${escapeHtml(vStr)}</span></div>`;
+            }
+            html += `<div class="horae-rpg-overview-section">${attrHtml}</div>`;
+        }
+
+        html += '</div>';
+        return html;
+    }
+
     /** 构建单个角色的分页标签 HTML */
     function _buildCharTabs(name) {
         const tabs = [];
@@ -7618,6 +7675,11 @@ function updateRpgDisplay() {
         const charCur = rpg.currency?.[name] || {};
         const charLv = rpg.levels?.[name];
         const charXp = rpg.xp?.[name];
+
+        if (_isU) {
+            tabs.push({ id: `overview_${eid}`, label: t('ui.rpgTabOverview') });
+            panels.push(_buildOverviewHtml(name, rpg));
+        }
 
         if (hasAttrModule && (!settings.rpgAttrsUserOnly || _isU)) {
             tabs.push({ id: `attr_${eid}`, label: t('ui.rpgTabAttr') });

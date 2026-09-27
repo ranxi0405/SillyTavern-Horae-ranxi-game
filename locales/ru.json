@@ -1858,7 +1858,10 @@
         "rpgSkillCatBody": "Закалка тела",
         "rpgSkillCatSpirit": "Дух",
         "rpgSkillCatSecret": "Секрет",
-        "rpgSkillCatOther": "Прочее"
+        "rpgSkillCatOther": "Прочее",
+        "rpgTabOverview": "Обзор",
+        "rpgOverviewSpirit": "Дух",
+        "rpgOverviewSpiritXp": "накопл."
     },
     "npcFields": {
         "gender": "Пол",

@@ -495,7 +495,10 @@
         "rpgSkillCatBody": "煉體",
         "rpgSkillCatSpirit": "神識",
         "rpgSkillCatSecret": "秘術",
-        "rpgSkillCatOther": "其他"
+        "rpgSkillCatOther": "其他",
+        "rpgTabOverview": "總覽",
+        "rpgOverviewSpirit": "神識",
+        "rpgOverviewSpiritXp": "累積"
     },
     "toast": {
         "saveSuccess": "儲存成功！",

@@ -1853,7 +1853,10 @@
         "rpgSkillCatBody": "연체",
         "rpgSkillCatSpirit": "신식",
         "rpgSkillCatSecret": "비술",
-        "rpgSkillCatOther": "기타"
+        "rpgSkillCatOther": "기타",
+        "rpgTabOverview": "개요",
+        "rpgOverviewSpirit": "신식",
+        "rpgOverviewSpiritXp": "누적"
     },
     "npcFields": {
         "gender": "성별",

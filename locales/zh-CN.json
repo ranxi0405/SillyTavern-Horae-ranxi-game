@@ -2024,7 +2024,10 @@
         "rpgSkillCatBody": "炼体",
         "rpgSkillCatSpirit": "神识",
         "rpgSkillCatSecret": "秘术",
-        "rpgSkillCatOther": "其他"
+        "rpgSkillCatOther": "其他",
+        "rpgTabOverview": "总览",
+        "rpgOverviewSpirit": "神识",
+        "rpgOverviewSpiritXp": "累积"
     },
     "npcFields": {
         "gender": "性别",
