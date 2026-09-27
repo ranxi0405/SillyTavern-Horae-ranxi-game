@@ -12,6 +12,7 @@ import { slideToggle } from '/lib.js';
 
 import { horaeManager, createEmptyMeta, getItemBaseName } from './core/horaeManager.js';
 import { vectorManager } from './core/vectorManager.js';
+import { FactStore } from './core/memory/factStore.js';
 import { calculateRelativeTime, calculateDetailedRelativeTime, formatRelativeTime, generateTimeReference, getCurrentSystemTime, formatStoryDate, formatFullDateTime, parseStoryDate } from './utils/timeUtils.js';
 import { t, tForLang, initI18n, getLanguage, isZhLocale, setLanguage, detectEffectiveAiLangIsZh, detectEffectiveAiLang } from './core/i18n.js';
 import { initPromptDefaults, ensurePromptDefaults, ensurePresetPrompts, getPromptDefaultSync, getPresetPromptsSync, BUILTIN_PRESET_IDS } from './core/promptDefaults.js';
@@ -21631,3 +21632,140 @@ jQuery(async () => {
     _chatFullyLoaded = true;
     console.log(`[Horae] v${VERSION} 加载完成！作者: SenriYuki`);
 });
+
+/* ============================================================
+ * [TEMP] Fact 提取测试（手动在 Console 调用）
+ * 完成后删除
+ * ============================================================ */
+
+function _buildFactExtractionPrompt({ narrative, events, existingFacts, lang = 'zh-CN' }) {
+    const existingStr = existingFacts.length > 0
+        ? existingFacts.map(f => `${f.subject}|${f.predicate}|${f.object}`).join('\n')
+        : '（无）';
+    const eventsStr = events.length > 0
+        ? events.map(e => `[${e.level}] ${e.date}: ${e.summary}`).join('\n')
+        : '（无）';
+
+    if (lang === 'zh-CN' || lang === 'zh-TW') {
+        return `你是事实提取助手。请从剧情摘要和关键事件中，提取长期有效的事实。
+
+【输出格式】
+用 <horaefacts> 和 </horaefacts> 包裹。
+每行一条，格式为：主体|属性|值
+示例：
+<horaefacts>
+冉汐|门派|青云宗外门
+陆离|身份|天剑宗卧底
+黑铁匣|持有者|冉汐
+</horaefacts>
+
+【提取规则】
+1. 只提取"长期结论"，不提取"过程"和"临时状态"
+   ❌ 冉汐去了药铺
+   ✅ 冉汐|门派|青云宗外门
+2. 属性优先使用以下词汇（也允许其他明确属性）：
+   身份、境界、灵根、性别、年龄、种族、职业、门派、位置、持有者、性质、关系、目标
+3. 只提取"确认的事实"，不提取推测
+   ❌ 陆离可能是卧底
+   ✅ 陆离|身份|天剑宗卧底
+4. 不提取临时状态（灵力、气血、当前情绪、零散物品）
+5. 不重复提取已有事实（见下方已有 facts 列表）
+6. 有几条提几条，不设上限
+
+【已有 facts（用于去重，不要重复提取）】
+${existingStr}
+
+【本次剧情摘要】
+${narrative}
+
+【最近关键事件】
+${eventsStr}`;
+    }
+    return `You are a fact extraction assistant. Extract long-lived facts from the narrative and key events.
+
+【Format】
+Wrap in <horaefacts> and </horaefacts>.
+One per line: subject|predicate|object
+
+【Rules】
+1. Only "long-term conclusions", not "processes" or "temporary states"
+2. Preferred predicates: identity, realm, root, gender, age, race, occupation, sect, location, holder, nature, relation, goal
+3. Only confirmed facts, not speculations
+4. No temporary states
+5. No duplicates with existing facts below
+
+【Existing facts】
+${existingStr}
+
+【Narrative】
+${narrative}
+
+【Key events】
+${eventsStr}`;
+}
+
+function _parseFactsResponse(raw) {
+    if (!raw || typeof raw !== 'string') return [];
+    const cleaned = String(raw).trim();
+    const m = cleaned.match(/<horaefacts>([\s\S]*?)<\/horaefacts>/i);
+    const body = m ? m[1].trim() : cleaned;
+    const facts = [];
+    for (const line of body.split('\n')) {
+        const t = line.trim();
+        if (!t || t.startsWith('#') || t.startsWith('<')) continue;
+        const parts = t.split('|').map(s => s.trim()).filter(Boolean);
+        if (parts.length < 3) continue;
+        facts.push({
+            subject: parts[0],
+            predicate: parts[1],
+            object: parts.slice(2).join('|'),
+            confidence: 'confirmed',
+            source: 'factExtraction',
+        });
+    }
+    return facts;
+}
+
+async function _testFactExtraction(summaryId) {
+    const chat = horaeManager.getChat();
+    if (!chat?.length) { console.warn('无 chat'); return; }
+    const summaries = chat[0]?.horae_meta?.autoSummaries || [];
+    const entry = summaryId
+        ? summaries.find(s => s.id === summaryId)
+        : summaries[summaries.length - 1];
+    if (!entry) { console.warn('找不到 summary'); return; }
+    console.log('[Test] 使用 summary:', entry.id, 'range:', entry.range);
+
+    const factStore = new FactStore(horaeManager);
+    const existingFacts = factStore.getActive();
+    console.log('[Test] 现有 active facts:', existingFacts.length);
+
+    const events = (entry.originalEvents || [])
+        .filter(e => e.level === '关键' || e.level === '重要')
+        .slice(-30)
+        .map(e => ({ level: e.level, date: e.date, summary: e.summary }));
+    console.log('[Test] 关键事件数:', events.length);
+
+    const prompt = _buildFactExtractionPrompt({
+        narrative: entry.summaryText || '',
+        events,
+        existingFacts,
+        lang: 'zh-CN',
+    });
+    console.log('[Test] Prompt 长度:', prompt.length);
+
+    const response = await _generateForAuxTask(prompt, { kind: 'summary', label: 'Fact Extraction' });
+    console.log('[Test] AI 原始返回:');
+    console.log(response);
+
+    const facts = _parseFactsResponse(response);
+    console.log('[Test] 解析结果:');
+    console.log(JSON.stringify(facts, null, 2));
+
+    console.log('[Test] 本测试不自动 commit。满意后再手动调用 FactStore.commitBatch。');
+
+    return facts;
+}
+
+window._horaeTestFactExtraction = _testFactExtraction;
+console.log('[Horae] Fact 提取测试已就绪：window._horaeTestFactExtraction()');
