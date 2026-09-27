@@ -754,9 +754,13 @@ function _normalizeRpgBarConfigInPlace() {
     let changed = false;
     settings.rpgBarConfig = settings.rpgBarConfig.map((bar, idx) => {
         const fallback = DEFAULT_SETTINGS.rpgBarConfig[idx] || {};
+        let _barName = String(bar?.name || fallback.name || bar?.key || `BAR${idx + 1}`).trim();
+        // 迁移：sp 的旧默认名 '神识' → '神念'（仅对旧默认值生效）
+        const _barKey = String(bar?.key || fallback.key || '').trim().toLowerCase();
+        if (_barKey === 'sp' && _barName === '神识') _barName = '神念';
         const clean = {
             key: String(bar?.key || fallback.key || `bar${idx + 1}`).trim().toLowerCase().replace(/[^a-z0-9_]/g, '') || `bar${idx + 1}`,
-            name: String(bar?.name || fallback.name || bar?.key || `BAR${idx + 1}`).trim(),
+            name: _barName,
             color: bar?.color || fallback.color || '#a78bfa',
             min: Number.isFinite(parseInt(bar?.min, 10)) ? parseInt(bar.min, 10) : (fallback.min ?? 0),
             max: Number.isFinite(parseInt(bar?.max, 10)) ? parseInt(bar.max, 10) : (fallback.max ?? 9999),
@@ -7160,6 +7164,8 @@ function getRpgBarColor(key) {
 
 /** 根据配置获取属性条显示名（用户自定义名 > AI标签 > 默认key大写） */
 function getRpgBarName(key, aiLabel) {
+    // 迁移：sp 的旧 label '神识' → '神念'（UI 层兜底，防止 cfg 未迁移的极端情况）
+    if (key === 'sp' && aiLabel === '神识') aiLabel = '神念';
     const cfg = (settings.rpgBarConfig || []).find(b => b.key === key);
     const cfgName = cfg?.name;
     if (cfgName && cfgName !== key.toUpperCase()) return cfgName;
