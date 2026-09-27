@@ -34,11 +34,15 @@
 - **涉及模块**：DirectorStore
 - **处理**：已从 min Jaccard 改为 union Jaccard，阈值 0.4
 
-### 2026-09-27 | 🔴 | 🆕 未修
+### 2026-09-27 | 🔴 | ✅ 已修
 - **现象**：隐藏设定（无界灵根 / 无界道体）可能泄漏到 summaryText
   并随 timelinePrompt 每回合注入主模型
 - **涉及模块**：摘要层 / onPromptReady
-- **处理**：待设计 summaryText 隐藏词过滤（保留原文，注入时替换）
+- **处理**：新增 core/memory/hiddenKeywords.js，index.js 三处注入点加 sanitize
+  - stableRulesPrompt / dataPrompt / timelinePrompt / combinedPrompt
+  - 存储层保留原文，注入层替换为 [隐藏灵根] / [隐藏体质]
+  - 验证：window.horaeDebugPrompt.includes('无界灵根') === false
+- **实测反馈**：AI 表现完美——"金光一闪而过"等间接线索，不再直说
 
 ### 2026-09-27 | 🟡 | 🆕 未修
 - **现象**：玩家查询类指令（"查询主角真实体质"）被 AI 记为
