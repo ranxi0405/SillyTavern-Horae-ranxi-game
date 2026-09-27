@@ -18,6 +18,7 @@ const EMPTY_SNAPSHOT = () => ({
     currency: {}, strongholds: [],
     spirit: null,
     arts: {}, shenTong: {},
+    realm: null, cultivation: null, age: null, lifespan: null,
 });
 
 import { createEmptyMeta, findExistingItemByBaseName, getItemBaseName } from '../horaeManager.js';
@@ -99,6 +100,52 @@ export class StateStore {
                     if (hasValidXp) snapshot.spirit.xp = changes.spirit.xp;
                 }
             }
+
+            // realm 回放（与 applyChanges 逻辑一致）
+            if (changes.realm && typeof changes.realm === 'object') {
+                const VALID_NAMES = ['炼气', '筑基', '结晶', '金丹', '具灵', '元婴', '化神', '悟道', '羽化', '登仙', '飞升'];
+                const VALID_PHASES = ['初期', '中期', '后期', '圆满'];
+                const cName = changes.realm.name;
+                const cPhase = changes.realm.phase;
+                const hasName = typeof cName === 'string' && cName.length > 0;
+                const hasPhase = typeof cPhase === 'string' && cPhase.length > 0;
+
+                if (hasName) {
+                    if (VALID_NAMES.includes(cName)) {
+                        let finalPhase = null;
+                        if (cName === '飞升') {
+                            finalPhase = null;
+                        } else if (hasPhase && VALID_PHASES.includes(cPhase)) {
+                            finalPhase = cPhase;
+                        }
+                        snapshot.realm = { name: cName, phase: finalPhase };
+                    }
+                } else if (hasPhase) {
+                    if (snapshot.realm && snapshot.realm.name && snapshot.realm.name !== '飞升' && VALID_PHASES.includes(cPhase)) {
+                        snapshot.realm.phase = cPhase;
+                    }
+                }
+            }
+
+            // cultivation 回放
+            if (Array.isArray(changes.cultivation) && changes.cultivation.length >= 2) {
+                const cur = changes.cultivation[0];
+                const max = changes.cultivation[1];
+                if (Number.isSafeInteger(cur) && cur >= 0 && Number.isSafeInteger(max) && max >= 0) {
+                    snapshot.cultivation = [cur, max];
+                }
+            }
+
+            // age 回放
+            if (typeof changes.age === 'number' && Number.isSafeInteger(changes.age) && changes.age >= 0) {
+                snapshot.age = changes.age;
+            }
+
+            // lifespan 回放
+            if (typeof changes.lifespan === 'number' && Number.isSafeInteger(changes.lifespan) && changes.lifespan >= 0) {
+                snapshot.lifespan = changes.lifespan;
+            }
+
             for (const [raw, effects] of Object.entries(changes.status || {})) {
                 const owner = _resolve(raw);
                 snapshot.status[owner] = effects;
@@ -346,6 +393,76 @@ export class StateStore {
                 if (hasValidXp) rpg.spirit.xp = changes.spirit.xp;
             }
         }
+
+        // realm 合并（支持 phase-only 增量）
+        if (changes.realm && typeof changes.realm === 'object') {
+            const VALID_NAMES = ['炼气', '筑基', '结晶', '金丹', '具灵', '元婴', '化神', '悟道', '羽化', '登仙', '飞升'];
+            const VALID_PHASES = ['初期', '中期', '后期', '圆满'];
+            const cName = changes.realm.name;
+            const cPhase = changes.realm.phase;
+            const hasName = typeof cName === 'string' && cName.length > 0;
+            const hasPhase = typeof cPhase === 'string' && cPhase.length > 0;
+
+            if (hasName) {
+                if (!VALID_NAMES.includes(cName)) {
+                    console.warn('[Horae][realm] 非法 name，忽略:', cName);
+                } else {
+                    let finalPhase = null;
+                    if (cName === '飞升') {
+                        finalPhase = null;
+                    } else if (hasPhase) {
+                        if (VALID_PHASES.includes(cPhase)) {
+                            finalPhase = cPhase;
+                        } else {
+                            console.warn('[Horae][realm] 非法 phase，忽略 phase:', cPhase);
+                            finalPhase = null;
+                        }
+                    }
+                    rpg.realm = { name: cName, phase: finalPhase };
+                }
+            } else if (hasPhase) {
+                if (!rpg.realm || !rpg.realm.name) {
+                    console.warn('[Horae][realm] phase-only 但 State 无 realm，忽略:', cPhase);
+                } else if (rpg.realm.name === '飞升') {
+                    console.warn('[Horae][realm] phase-only 但 State 是飞升，忽略:', cPhase);
+                } else if (VALID_PHASES.includes(cPhase)) {
+                    rpg.realm.phase = cPhase;
+                } else {
+                    console.warn('[Horae][realm] 非法 phase，忽略:', cPhase);
+                }
+            }
+        }
+
+        // cultivation 合并
+        if (Array.isArray(changes.cultivation) && changes.cultivation.length >= 2) {
+            const cur = changes.cultivation[0];
+            const max = changes.cultivation[1];
+            if (Number.isSafeInteger(cur) && cur >= 0 && Number.isSafeInteger(max) && max >= 0) {
+                rpg.cultivation = [cur, max];
+                if (cur > max) console.warn('[Horae][cultivation] cur > max，保留:', cur, max);
+            } else {
+                console.warn('[Horae][cultivation] 非法值，忽略:', changes.cultivation);
+            }
+        }
+
+        // age 合并
+        if (typeof changes.age === 'number') {
+            if (Number.isSafeInteger(changes.age) && changes.age >= 0) {
+                rpg.age = changes.age;
+            } else {
+                console.warn('[Horae][age] 非法值，忽略:', changes.age);
+            }
+        }
+
+        // lifespan 合并
+        if (typeof changes.lifespan === 'number') {
+            if (Number.isSafeInteger(changes.lifespan) && changes.lifespan >= 0) {
+                rpg.lifespan = changes.lifespan;
+            } else {
+                console.warn('[Horae][lifespan] 非法值，忽略:', changes.lifespan);
+            }
+        }
+
         for (const [raw, effects] of Object.entries(changes.status || {})) {
             const owner = manager._resolveRpgOwner(raw);
             if (manager.settings?.rpgBarsUserOnly && owner !== _mUN) continue;
@@ -640,6 +757,10 @@ export class StateStore {
         rpg.spirit = null;
         rpg.arts = {};
         rpg.shenTong = {};
+        rpg.realm = null;
+        rpg.cultivation = null;
+        rpg.age = null;
+        rpg.lifespan = null;
 
         // ── config 从权威来源写入 rpg（供 _mergeRpgData 使用） ──
         rpg.reputationConfig = repCfg;
