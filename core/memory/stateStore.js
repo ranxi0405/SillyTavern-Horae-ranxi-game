@@ -16,6 +16,7 @@ const EMPTY_SNAPSHOT = () => ({
     bars: {}, status: {}, skills: {}, attributes: {},
     reputation: {}, equipment: {}, levels: {}, xp: {},
     currency: {}, strongholds: [],
+    spirit: null,
 });
 
 import { createEmptyMeta, findExistingItemByBaseName, getItemBaseName } from '../horaeManager.js';
@@ -83,6 +84,18 @@ export class StateStore {
                     } else {
                         snapshot.bars[owner][type] = val;
                     }
+                }
+            }
+
+            // spirit 回放
+            if (changes.spirit && typeof changes.spirit === 'object') {
+                const VALID_TIERS = ['蒙昧', '清明', '凝照', '洞玄', '明心', '太虚'];
+                const hasValidTier = typeof changes.spirit.tier === 'string' && VALID_TIERS.includes(changes.spirit.tier);
+                const hasValidXp = typeof changes.spirit.xp === 'number' && Number.isInteger(changes.spirit.xp) && changes.spirit.xp >= 0;
+                if (hasValidTier || hasValidXp) {
+                    if (!snapshot.spirit) snapshot.spirit = {};
+                    if (hasValidTier) snapshot.spirit.tier = changes.spirit.tier;
+                    if (hasValidXp) snapshot.spirit.xp = changes.spirit.xp;
                 }
             }
             for (const [raw, effects] of Object.entries(changes.status || {})) {
@@ -295,6 +308,18 @@ export class StateStore {
                 } else {
                     rpg.bars[owner][type] = val;
                 }
+            }
+        }
+
+        // spirit 合并
+        if (changes.spirit && typeof changes.spirit === 'object') {
+            const VALID_TIERS = ['蒙昧', '清明', '凝照', '洞玄', '明心', '太虚'];
+            const hasValidTier = typeof changes.spirit.tier === 'string' && VALID_TIERS.includes(changes.spirit.tier);
+            const hasValidXp = typeof changes.spirit.xp === 'number' && Number.isInteger(changes.spirit.xp) && changes.spirit.xp >= 0;
+            if (hasValidTier || hasValidXp) {
+                if (!rpg.spirit) rpg.spirit = {};
+                if (hasValidTier) rpg.spirit.tier = changes.spirit.tier;
+                if (hasValidXp) rpg.spirit.xp = changes.spirit.xp;
             }
         }
         for (const [raw, effects] of Object.entries(changes.status || {})) {
@@ -563,6 +588,7 @@ export class StateStore {
         rpg.levels = {};
         rpg.xp = {};
         rpg.currency = {};
+        rpg.spirit = null;
 
         // ── config 从权威来源写入 rpg（供 _mergeRpgData 使用） ──
         rpg.reputationConfig = repCfg;

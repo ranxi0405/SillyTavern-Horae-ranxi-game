@@ -1512,6 +1512,20 @@ if (sendCharacters) {
                 }
             }
 
+            // 神识段位显示（spirit.tier + spirit.xp）
+            const spirit = rpg.spirit;
+            if (spirit && (spirit.tier || typeof spirit.xp === 'number')) {
+                if (!_cUoB || userName === userName) {
+                    if (!filterRpg || rpgAllowed.has(userName)) {
+                        const tierLabel = L('神识', 'Spirit', '神识', '신식', 'Дух');
+                        const xpLabel = L('累积', 'xp', '累積', '누적', 'накопл.');
+                        const tierVal = spirit.tier || '—';
+                        const xpVal = (typeof spirit.xp === 'number') ? spirit.xp : 0;
+                        lines.push(`${_ctxPre(userName, _cUoB)}${tierLabel}：${tierVal} · ${xpLabel} ${xpVal}`);
+                    }
+                }
+            }
+
             if (sendSkills && Object.keys(rpg.skills).length > 0) {
                 const hasAny = Object.entries(rpg.skills).some(([n, arr]) =>
                     arr?.length > 0 && (!_cUoS || n === userName) && (!filterRpg || rpgAllowed.has(n)));
@@ -2732,6 +2746,33 @@ if (sendCharacters) {
                     }
                 }
             }
+        }
+        // spirit:神识段位（spirit:tier=蒙昧 或 spirit:xp=100）
+        if (line.startsWith('spirit:')) {
+            const str = line.substring(7).trim();
+            const eq = str.indexOf('=');
+            if (eq > 0) {
+                const key = str.substring(0, eq).trim().toLowerCase();
+                const val = str.substring(eq + 1).trim();
+                const VALID_TIERS = ['蒙昧', '清明', '凝照', '洞玄', '明心', '太虚'];
+                if (key === 'tier') {
+                    if (VALID_TIERS.includes(val)) {
+                        if (!rpg.spirit) rpg.spirit = {};
+                        rpg.spirit.tier = val;
+                    } else {
+                        console.warn('[Horae][spirit] 非法 tier，忽略:', val);
+                    }
+                } else if (key === 'xp') {
+                    const n = Number(val);
+                    if (Number.isInteger(n) && n >= 0) {
+                        if (!rpg.spirit) rpg.spirit = {};
+                        rpg.spirit.xp = n;
+                    } else {
+                        console.warn('[Horae][spirit] 非法 xp，忽略:', val);
+                    }
+                }
+            }
+            return;
         }
     }
 
@@ -4003,8 +4044,17 @@ generateSystemPromptAddition() {
     generateRpgPrompt() {
         if (!this.settings?.rpgMode) return '';
         const customPrompt = this.settings?.customRpgPrompt || '';
-        if (customPrompt.trim()) return '\n' + this._resolveRpgPromptTemplate(customPrompt);
-        return '\n' + this.getDefaultRpgPromptResolved();
+        let base;
+        if (customPrompt.trim()) base = this._resolveRpgPromptTemplate(customPrompt);
+        else base = this.getDefaultRpgPromptResolved();
+
+        const lang = this._getAiOutputLang();
+        const isZh = lang === 'zh-CN' || lang === 'zh-TW';
+        const spiritNote = isZh
+            ? '\n\n【神识段位（仅变化时输出）】\nspirit:tier=段位名（蒙昧/清明/凝照/洞玄/明心/太虚）\nspirit:xp=累计总值（不是增量）\n仅在剧情明确发生段位变化或累计值变化时输出对应行，无变化不输出。'
+            : '\n\n[Spirit Tier (output only on change)]\nspirit:tier=tier name\nspirit:xp=cumulative value (total, not delta)\nOutput only when tier or xp changes; otherwise skip.';
+
+        return '\n' + base + spiritNote;
     }
 
     /** RPG 默认提示词（资源优先，支持分段占位符） */
