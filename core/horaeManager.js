@@ -1866,21 +1866,81 @@ if (sendCharacters) {
         }
         
         // 已知事实（Facts）
-        const factsSection = this._generateFactsSection();
+        const relevantActors = this._collectRelevantActors(state, userQuery);
+        const factsSection = this._generateFactsSection(relevantActors);
         if (factsSection) lines.push(factsSection);
 
         // 未完成事务（Threads）
-        const threadsSection = this._generateThreadsSection();
+        const threadsSection = this._generateThreadsSection(relevantActors);
         if (threadsSection) lines.push(threadsSection);
 
         return lines.join('\n');
     }
 
+    /** 收集相关角色（RelevantActors 公式） */
+    _collectRelevantActors(state, userQuery = '') {
+        const actors = new Set();
+
+        // 1. 主角
+        const userName = this.context?.name1;
+        if (userName) actors.add(userName);
+
+        // 2. 在场角色
+        const present = state?.scene?.characters_present || [];
+        for (const p of present) {
+            if (p && typeof p === 'string') actors.add(p.trim());
+        }
+
+        // 3. userQuery 里提到的（用现有 facts/threads subject 做匹配）
+        if (userQuery && typeof userQuery === 'string') {
+            const chat = this.getChat();
+            const facts = chat?.[0]?.horae_meta?.facts || [];
+            const threads = chat?.[0]?.horae_meta?.threads || [];
+
+            const candidates = new Set();
+            for (const f of facts) {
+                if (f.subject && f.subject.length >= 2) candidates.add(f.subject);
+            }
+            for (const t of threads) {
+                for (const p of (t.participants || [])) {
+                    if (p && p.length >= 2) candidates.add(p);
+                }
+            }
+
+            for (const c of candidates) {
+                if (userQuery.includes(c)) actors.add(c);
+            }
+        }
+
+        return actors;
+    }
+
     /** 生成"已知事实"段（从 chat[0].horae_meta.facts 读取 active 条目） */
-    _generateFactsSection() {
+    _generateFactsSection(relevantActors = null) {
         const facts = this.getChat()?.[0]?.horae_meta?.facts || [];
         const active = facts.filter(f => f.status === 'active');
         if (active.length === 0) return '';
+
+        // Relevance 过滤
+        const filtered = active.filter(f => {
+            // gm_only 总是注入
+            if (f.visibility === 'gm_only') return true;
+            // 无 RelevantActors 时全注入（保底）
+            if (!relevantActors || relevantActors.size === 0) return true;
+            // subject 精确匹配
+            if (f.subject && relevantActors.has(f.subject)) return true;
+            // object 精确匹配
+            if (f.object && typeof f.object === 'string' && relevantActors.has(f.object)) return true;
+            // 包含匹配（防止 "冉汐的青玉镯" 匹配不到 "冉汐"）
+            for (const actor of relevantActors) {
+                if (actor.length < 2) continue;
+                if (f.subject && f.subject.includes(actor)) return true;
+                if (f.object && typeof f.object === 'string' && f.object.includes(actor)) return true;
+            }
+            return false;
+        });
+
+        if (filtered.length === 0) return '';
 
         const lang = this._getAiOutputLang();
         const isZh = lang === 'zh-CN' || lang === 'zh-TW';
@@ -1889,7 +1949,7 @@ if (sendCharacters) {
         lines.push(isZh ? '\n[已知事实]' : '\n[Known Facts]');
 
         const groups = { public: [], hidden: [], gm_only: [] };
-        for (const f of active) {
+        for (const f of filtered) {
             const vis = f.visibility || 'public';
             (groups[vis] || groups.public).push(f);
         }
@@ -1910,11 +1970,29 @@ if (sendCharacters) {
     }
 
     /** 生成"未完成事务"段（从 chat[0].horae_meta.threads 读取 active 条目） */
-    _generateThreadsSection() {
+    _generateThreadsSection(relevantActors = null) {
         const threads = this.getChat()?.[0]?.horae_meta?.threads || [];
         const ACTIVE_STATUSES = new Set(['open', 'progressing', 'blocked']);
         const active = threads.filter(t => ACTIVE_STATUSES.has(t.status));
         if (active.length === 0) return '';
+
+        // Relevance 过滤
+        const filtered = active.filter(t => {
+            if (t.visibility === 'gm_only') return true;
+            if (!relevantActors || relevantActors.size === 0) return true;
+            // 无参与者的世界事件也注入
+            if (!t.participants || t.participants.length === 0) return true;
+            for (const p of t.participants) {
+                if (relevantActors.has(p)) return true;
+                for (const actor of relevantActors) {
+                    if (actor.length < 2) continue;
+                    if (p.includes(actor) || actor.includes(p)) return true;
+                }
+            }
+            return false;
+        });
+
+        if (filtered.length === 0) return '';
 
         const lang = this._getAiOutputLang();
         const isZh = lang === 'zh-CN' || lang === 'zh-TW';
@@ -1923,7 +2001,7 @@ if (sendCharacters) {
         lines.push(isZh ? '\n[未完成事务]' : '\n[Active Threads]');
 
         const priorityOrder = { critical: 0, high: 1, normal: 2, low: 3 };
-        const sorted = [...active].sort((a, b) =>
+        const sorted = [...filtered].sort((a, b) =>
             (priorityOrder[a.priority] ?? 2) - (priorityOrder[b.priority] ?? 2)
         );
 
