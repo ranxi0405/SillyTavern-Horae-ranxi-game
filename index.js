@@ -9555,12 +9555,14 @@ function _renderEffectChip(eff) {
 /** 数值文本 + 同名隐藏 input；inputs 在 .editing 状态下显示替换 */
 function _renderEditableVal(cur, max, kindCur, kindMax, key) {
     const keyAttr = key ? ` data-edit-key="${escapeHtml(key)}"` : '';
+    const curSafe = (cur === null || cur === undefined || Number.isNaN(cur)) ? 0 : cur;
+    const maxSafe = (max === null || max === undefined || Number.isNaN(max)) ? 0 : max;
     return `<span class="horae-rpg-hud-val">`
-        + `<span class="horae-rpg-hud-val-display">${cur}/${max}</span>`
+        + `<span class="horae-rpg-hud-val-display">${curSafe}/${maxSafe}</span>`
         + `<span class="horae-rpg-hud-val-edit">`
-        + `<input class="horae-rpg-hud-edit-input" type="number" inputmode="numeric" min="0" data-edit-kind="${kindCur}"${keyAttr} value="${cur}">`
+        + `<input class="horae-rpg-hud-edit-input" type="number" inputmode="numeric" min="0" data-edit-kind="${kindCur}"${keyAttr} value="${curSafe}">`
         + `<span class="horae-rpg-hud-val-sep">/</span>`
-        + `<input class="horae-rpg-hud-edit-input" type="number" inputmode="numeric" min="1" data-edit-kind="${kindMax}"${keyAttr} value="${max}">`
+        + `<input class="horae-rpg-hud-edit-input" type="number" inputmode="numeric" min="1" data-edit-kind="${kindMax}"${keyAttr} value="${maxSafe}">`
         + `</span>`
         + `</span>`;
 }
