@@ -21019,7 +21019,8 @@ async function onPromptReady(eventData) {
             }
         }
 
-        const stableRulesPrompt = horaeManager.generateStableSystemPrompt();
+        const stableRulesPrompt = horaeManager.generateStableSystemPrompt() +
+    horaeManager.generateAntiParaphraseSystemPrompt();
 
         let antiParaRef = '';
         if (settings.antiParaphraseMode && chat?.length) {
@@ -21048,11 +21049,7 @@ const dynamicPrompt = recallPrompt
     ? `${dataPrompt}\n${recallPrompt}`
     : dataPrompt;
 
-const antiParaphrasePrompt =
-    `${horaeManager.generateAntiParaphraseSystemPrompt()}${antiParaRef}`;
-
-const combinedPrompt =
-    `${dynamicPrompt}\n${antiParaphrasePrompt}`;
+const combinedPrompt = `${dynamicPrompt}${antiParaRef}`;
         const positionRaw = parseInt(settings.injectionPosition, 10);
         const position = Number.isNaN(positionRaw) ? 1 : Math.max(0, positionRaw);
         const depthSource = settings.injectionDepthSource === 'preset' ? 'preset' : 'system';
