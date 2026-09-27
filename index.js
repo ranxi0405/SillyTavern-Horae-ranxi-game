@@ -13,6 +13,7 @@ import { slideToggle } from '/lib.js';
 import { horaeManager, createEmptyMeta, getItemBaseName } from './core/horaeManager.js';
 import { vectorManager } from './core/vectorManager.js';
 import { FactStore } from './core/memory/factStore.js';
+import { DirectorStore } from './core/memory/directorStore.js';
 import { calculateRelativeTime, calculateDetailedRelativeTime, formatRelativeTime, generateTimeReference, getCurrentSystemTime, formatStoryDate, formatFullDateTime, parseStoryDate } from './utils/timeUtils.js';
 import { t, tForLang, initI18n, getLanguage, isZhLocale, setLanguage, detectEffectiveAiLangIsZh, detectEffectiveAiLang } from './core/i18n.js';
 import { initPromptDefaults, ensurePromptDefaults, ensurePresetPrompts, getPromptDefaultSync, getPresetPromptsSync, BUILTIN_PRESET_IDS } from './core/promptDefaults.js';
@@ -20986,6 +20987,30 @@ async function onPromptReady(eventData) {
             }
         }
 
+        // 检测玩家输入中的导演指令（长期要求）
+        try {
+            const lastChat = horaeManager.getChat();
+            const lastMsg = lastChat?.[lastChat.length - 1];
+            if (currentUserInput && lastMsg?.is_user && !lastMsg.horae_meta?._directorChecked) {
+                const dStore = new DirectorStore(horaeManager);
+                const detected = dStore.detect(currentUserInput);
+                if (detected) {
+                    const result = dStore.commit({
+                        category: detected.category,
+                        text: detected.text,
+                        source: `msg:${lastChat.length - 1}`,
+                    });
+                    if (!result._isNew && result.reinforcementCount > 1) {
+                        showToast(`[已记录长期要求：${result.category}] ${result.text}（第 ${result.reinforcementCount} 次）`, 'info');
+                    }
+                }
+                if (!lastMsg.horae_meta) lastMsg.horae_meta = {};
+                lastMsg.horae_meta._directorChecked = true;
+            }
+        } catch (e) {
+            console.warn('[Horae] DirectorStore 检测失败:', e);
+        }
+
         const rawDataPrompt = horaeManager.generateCompactPrompt(
             skipLast,
             currentUserInput
@@ -21021,7 +21046,8 @@ async function onPromptReady(eventData) {
         }
 
         const stableRulesPrompt = horaeManager.generateStableSystemPrompt() +
-    horaeManager.generateAntiParaphraseSystemPrompt();
+    horaeManager.generateAntiParaphraseSystemPrompt() +
+    horaeManager.generateDirectorNotesPrompt();
 
         let antiParaRef = '';
         if (settings.antiParaphraseMode && chat?.length) {

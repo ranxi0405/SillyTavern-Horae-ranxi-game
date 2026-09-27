@@ -3565,7 +3565,31 @@ if (sendCharacters) {
     return '\n' + this._injectMaterialGuard(base);
 }
 
-generateAntiParaphraseSystemPrompt() {
+/** 玩家长期导演要求（从 chat[0].horae_meta.directorNotes 读取 active 条目） */
+    generateDirectorNotesPrompt() {
+        const notes = this.getChat()?.[0]?.horae_meta?.directorNotes || [];
+        const active = notes.filter(d => d.status === 'active');
+        if (active.length === 0) return '';
+
+        const lang = this._getAiOutputLang();
+        const isZh = lang === 'zh-CN' || lang === 'zh-TW';
+
+        const lines = [];
+        lines.push(isZh ? '\n[玩家长期要求]（每回合请遵守）' : '\n[Player Long-term Requirements] (comply every turn)');
+
+        for (const d of active) {
+            const cat = d.category || 'misc';
+            const count = d.reinforcementCount || 1;
+            const suffix = count > 1
+                ? (isZh ? ` ⚠️ 已提醒 ${count} 次` : ` ⚠️ reminded ${count}x`)
+                : '';
+            lines.push(`· [${cat}] ${d.text}${suffix}`);
+        }
+
+        return lines.join('\n');
+    }
+
+    generateAntiParaphraseSystemPrompt() {
     return this._generateAntiParaphrasePrompt();
 }
 
