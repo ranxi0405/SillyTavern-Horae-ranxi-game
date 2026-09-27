@@ -498,7 +498,17 @@
         "rpgSkillCatOther": "其他",
         "rpgTabOverview": "總覽",
         "rpgOverviewSpirit": "神識",
-        "rpgOverviewSpiritXp": "累積"
+        "rpgOverviewSpiritXp": "累積",
+        "rpgTabArts": "六藝",
+        "rpgTabShenTong": "神通",
+        "rpgArtsAlchemy": "煉丹",
+        "rpgArtsSmithing": "煉器",
+        "rpgArtsTalisman": "符籙",
+        "rpgArtsFormation": "陣法",
+        "rpgArtsBeast": "御獸",
+        "rpgArtsHerb": "靈植",
+        "rpgArtsUntrained": "未入門",
+        "noShenTong": "暫無神通"
     },
     "toast": {
         "saveSuccess": "儲存成功！",

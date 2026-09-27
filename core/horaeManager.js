@@ -4108,8 +4108,8 @@ generateSystemPromptAddition() {
             : '\n\n[Spirit Data — output only on change]\nspirit:tier=tier name\nspirit:xp=cumulative total (not delta)\nOutput only when this turn changes spirit tier or xp.\nDo NOT output spirit lines when nothing changes.\nNo auto-promotion thresholds; do NOT compute or promote tiers yourself.';
 
         const craftNote = isZh
-            ? '\n\n【六艺数据——仅变化时输出】\ncraft:归属|名称|段位|累计值\n段位按世界书对六艺的既有定义输出（学徒/一品/二品/三品/四品/五品/六品）。\n累计值为当前总值（不是增量）。\n没有依据改变段位时，不要自行推导或升级。'
-            : '\n\n[Crafts — output only on change]\ncraft:owner|name|tier|cumulative\nTier per worldbook definition.\ncumulative = total (not delta).\nDo NOT promote tiers on your own.';
+            ? '\n\n【六艺数据——仅变化时输出】\ncraft:归属|名称|段位|累计值\n段位按世界书对六艺的既有定义输出（学徒/一品/二品/三品/四品/五品/六品）。\n累计值为当前总值（不是增量）。\n名称字段必须使用以下六个中文 canonical key：炼丹 / 炼器 / 符箓 / 阵法 / 御兽 / 灵植。不得使用其他语言名称、缩写或改写。\n没有依据改变段位时，不要自行推导或升级。'
+            : '\n\n[Crafts — output only on change]\ncraft:owner|name|tier|cumulative\nTier per worldbook definition.\ncumulative = total (not delta).\nThe name field MUST use one of the six Chinese canonical keys: 炼丹 / 炼器 / 符箓 / 阵法 / 御兽 / 灵植. Do NOT use other languages, abbreviations, or reworded names.\nDo NOT promote tiers on your own.';
 
         const shenTongNote = isZh
             ? '\n\n【神通数据——仅在获得/变化时输出】\nshentong:归属|名称|描述\n神通通过神识突破/传承/血脉觉醒/机缘获得，不可常规修炼习得。'

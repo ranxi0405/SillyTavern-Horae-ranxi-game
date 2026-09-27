@@ -1861,7 +1861,17 @@
         "rpgSkillCatOther": "Прочее",
         "rpgTabOverview": "Обзор",
         "rpgOverviewSpirit": "Дух",
-        "rpgOverviewSpiritXp": "накопл."
+        "rpgOverviewSpiritXp": "накопл.",
+        "rpgTabArts": "Шесть искусств",
+        "rpgTabShenTong": "Божественные способности",
+        "rpgArtsAlchemy": "Алхимия",
+        "rpgArtsSmithing": "Кузнечное дело",
+        "rpgArtsTalisman": "Талисманы",
+        "rpgArtsFormation": "Формации",
+        "rpgArtsBeast": "Укрощение зверей",
+        "rpgArtsHerb": "Выращивание трав",
+        "rpgArtsUntrained": "Не обучен",
+        "noShenTong": "Нет способностей"
     },
     "npcFields": {
         "gender": "Пол",

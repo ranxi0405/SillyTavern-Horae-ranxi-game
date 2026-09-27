@@ -2027,7 +2027,17 @@
         "rpgSkillCatOther": "其他",
         "rpgTabOverview": "总览",
         "rpgOverviewSpirit": "神识",
-        "rpgOverviewSpiritXp": "累积"
+        "rpgOverviewSpiritXp": "累积",
+        "rpgTabArts": "六艺",
+        "rpgTabShenTong": "神通",
+        "rpgArtsAlchemy": "炼丹",
+        "rpgArtsSmithing": "炼器",
+        "rpgArtsTalisman": "符箓",
+        "rpgArtsFormation": "阵法",
+        "rpgArtsBeast": "御兽",
+        "rpgArtsHerb": "灵植",
+        "rpgArtsUntrained": "未入门",
+        "noShenTong": "暂无神通"
     },
     "npcFields": {
         "gender": "性别",

@@ -1856,7 +1856,17 @@
         "rpgSkillCatOther": "기타",
         "rpgTabOverview": "개요",
         "rpgOverviewSpirit": "신식",
-        "rpgOverviewSpiritXp": "누적"
+        "rpgOverviewSpiritXp": "누적",
+        "rpgTabArts": "육예",
+        "rpgTabShenTong": "신통",
+        "rpgArtsAlchemy": "연단",
+        "rpgArtsSmithing": "연기",
+        "rpgArtsTalisman": "부적",
+        "rpgArtsFormation": "진법",
+        "rpgArtsBeast": "어수",
+        "rpgArtsHerb": "영식",
+        "rpgArtsUntrained": "미입문",
+        "noShenTong": "신통 없음"
     },
     "npcFields": {
         "gender": "성별",

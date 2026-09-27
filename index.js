@@ -7662,6 +7662,67 @@ function updateRpgDisplay() {
         return html;
     }
 
+    /** 渲染六艺 HTML（主角专属）
+     *  State canonical key 固定为世界书规定的 6 个中文名：炼丹/炼器/符箓/阵法/御兽/灵植
+     *  UI 精确查找，再通过 i18n 映射到当前语言 label。
+     *  rpg.arts 里的额外 key 原样追加显示，不做模糊匹配。
+     */
+    function _buildArtsHtml(name, rpg) {
+        const artsMap = rpg.arts?.[name] || {};
+        const untrained = t('ui.rpgArtsUntrained');
+        const xpLabel = t('ui.rpgOverviewSpiritXp');
+
+        const CANONICAL_ARTS = [
+            { stateKey: '炼丹', i18nKey: 'ui.rpgArtsAlchemy' },
+            { stateKey: '炼器', i18nKey: 'ui.rpgArtsSmithing' },
+            { stateKey: '符箓', i18nKey: 'ui.rpgArtsTalisman' },
+            { stateKey: '阵法', i18nKey: 'ui.rpgArtsFormation' },
+            { stateKey: '御兽', i18nKey: 'ui.rpgArtsBeast' },
+            { stateKey: '灵植', i18nKey: 'ui.rpgArtsHerb' },
+        ];
+
+        const _renderVal = (data) => {
+            if (!data) return untrained;
+            const parts = [];
+            if (data.tier) parts.push(data.tier);
+            if (typeof data.xp === 'number') parts.push(`${xpLabel} ${data.xp}`);
+            return parts.length > 0 ? parts.join(' · ') : untrained;
+        };
+
+        let html = '<div class="horae-rpg-arts">';
+
+        for (const art of CANONICAL_ARTS) {
+            const data = artsMap[art.stateKey];
+            html += `<div class="horae-rpg-arts-row"><span class="horae-rpg-arts-label">${escapeHtml(t(art.i18nKey))}</span><span class="horae-rpg-arts-val">${escapeHtml(_renderVal(data))}</span></div>`;
+        }
+
+        const canonicalSet = new Set(CANONICAL_ARTS.map(a => a.stateKey));
+        for (const [k, v] of Object.entries(artsMap)) {
+            if (canonicalSet.has(k)) continue;
+            html += `<div class="horae-rpg-arts-row"><span class="horae-rpg-arts-label">${escapeHtml(k)}</span><span class="horae-rpg-arts-val">${escapeHtml(_renderVal(v))}</span></div>`;
+        }
+
+        html += '</div>';
+        return html;
+    }
+
+    /** 渲染神通 HTML（主角专属） */
+    function _buildShenTongHtml(name, rpg) {
+        const list = rpg.shenTong?.[name] || [];
+        if (!Array.isArray(list) || list.length === 0) {
+            return `<div class="horae-rpg-skills-empty">${t('ui.noShenTong')}</div>`;
+        }
+        let html = '<div class="horae-rpg-shentong">';
+        for (const st of list) {
+            html += '<details class="horae-rpg-skill-detail">';
+            html += `<summary class="horae-rpg-skill-summary">${escapeHtml(st.name || '?')}</summary>`;
+            if (st.desc) html += `<div class="horae-rpg-skill-desc">${escapeHtml(st.desc)}</div>`;
+            html += '</details>';
+        }
+        html += '</div>';
+        return html;
+    }
+
     /** 构建单个角色的分页标签 HTML */
     function _buildCharTabs(name) {
         const tabs = [];
@@ -7747,6 +7808,16 @@ function updateRpgDisplay() {
             }
             panels.push(html);
         }
+        if (_isU) {
+            // 六艺（主角专属）
+            tabs.push({ id: `arts_${eid}`, label: t('ui.rpgTabArts') });
+            panels.push(_buildArtsHtml(name, rpg));
+
+            // 神通（主角专属）
+            tabs.push({ id: `shentong_${eid}`, label: t('ui.rpgTabShenTong') });
+            panels.push(_buildShenTongHtml(name, rpg));
+        }
+
         if (sendEq && (!settings.rpgEquipmentUserOnly || _isU)) {
             tabs.push({ id: `eq_${eid}`, label: t('ui.rpgTabEquip') });
             let html = '';

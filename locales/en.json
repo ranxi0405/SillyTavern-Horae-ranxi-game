@@ -1945,7 +1945,17 @@
         "rpgSkillCatOther": "Other",
         "rpgTabOverview": "Overview",
         "rpgOverviewSpirit": "Spirit",
-        "rpgOverviewSpiritXp": "xp"
+        "rpgOverviewSpiritXp": "xp",
+        "rpgTabArts": "Six Arts",
+        "rpgTabShenTong": "Divine Abilities",
+        "rpgArtsAlchemy": "Alchemy",
+        "rpgArtsSmithing": "Smithing",
+        "rpgArtsTalisman": "Talismans",
+        "rpgArtsFormation": "Formations",
+        "rpgArtsBeast": "Beast Taming",
+        "rpgArtsHerb": "Herb Cultivation",
+        "rpgArtsUntrained": "Untrained",
+        "noShenTong": "No divine abilities"
     },
     "npcFields": {
         "gender": "Gender",

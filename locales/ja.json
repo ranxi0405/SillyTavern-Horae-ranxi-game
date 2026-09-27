@@ -1876,7 +1876,17 @@
         "rpgSkillCatOther": "その他",
         "rpgTabOverview": "概要",
         "rpgOverviewSpirit": "神識",
-        "rpgOverviewSpiritXp": "累積"
+        "rpgOverviewSpiritXp": "累積",
+        "rpgTabArts": "六芸",
+        "rpgTabShenTong": "神通",
+        "rpgArtsAlchemy": "錬丹",
+        "rpgArtsSmithing": "錬器",
+        "rpgArtsTalisman": "符籙",
+        "rpgArtsFormation": "陣法",
+        "rpgArtsBeast": "御獣",
+        "rpgArtsHerb": "霊植",
+        "rpgArtsUntrained": "未入門",
+        "noShenTong": "神通なし"
     },
     "npcFields": {
         "gender": "性別",
