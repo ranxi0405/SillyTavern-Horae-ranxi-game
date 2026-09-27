@@ -72,7 +72,10 @@
 
 - 待观察：DirectorStore 是否在长时间游戏中产生冗余条目
 - 待观察：FactStore 的 active facts 是否会超过 Prompt 容量
-- 待观察：L2 摘要是否丢失 L1 的关键细节
+- ✅ 已修（commit 41dbe67）：L2 摘要读取 originalEvents
+  - _collectAutoResummaryPayload 追加原始关键/重要事件
+  - 每 L1 最多 6 条
+  - 实测：L2 已存在 originalEvents 累积 415 条
 - 待观察：AI 对"玩家长期要求"段的遵守程度
 
 ---
