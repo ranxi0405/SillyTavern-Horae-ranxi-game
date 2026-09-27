@@ -2380,7 +2380,10 @@ if (sendCharacters) {
             if (result.rpg._realmTmp) {
                 const _tmp = result.rpg._realmTmp;
                 if (_tmp._seen) {
-                    result.rpg.realm = { name: _tmp.name || null, phase: _tmp.phase || null };
+                    let _phase = _tmp.phase || null;
+                    // 飞升强制 phase=null
+                    if (_tmp.name === '飞升') _phase = null;
+                    result.rpg.realm = { name: _tmp.name || null, phase: _phase };
                 }
                 delete result.rpg._realmTmp;
             }
