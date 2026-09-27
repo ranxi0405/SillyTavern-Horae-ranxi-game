@@ -2369,7 +2369,7 @@ if (sendCharacters) {
 
         // 解析 RPG 数据
         if (rpgMatches.length > 0) {
-            result.rpg = { bars: {}, status: {}, skills: [], removedSkills: [], attributes: {}, reputation: {}, equipment: [], unequip: [], levels: {}, xp: {}, currency: [], baseChanges: [] };
+            result.rpg = { bars: {}, status: {}, skills: [], removedSkills: [], attributes: {}, reputation: {}, equipment: [], unequip: [], levels: {}, xp: {}, currency: [], baseChanges: [], arts: [], shenTong: [] };
             const rm = [...rpgMatches].reverse().find(m => String(m[1] || '').trim()) || rpgMatches[rpgMatches.length - 1];
             const rpgContent = rm[1].trim();
             for (const rpgLine of rpgContent.split('\n')) {
@@ -2549,13 +2549,21 @@ if (sendCharacters) {
             }
             return;
         }
-        // skill
+        // skill（旧 4 字段 / 新 5 字段带 category）
+        // 旧 4 字段：不产生 category 字段（由 StateStore 在新建时默认 other，在更新时保留原值）
+        // 新 5 字段：合法 category 规范化，非法值归 other
         if (line.startsWith('skill:')) {
             const parts = line.substring(6).trim().split('|').map(s => s.trim());
+            const VALID_CATEGORIES = ['main', 'attack', 'movement', 'body', 'spirit', 'secret', 'other'];
+            const normCategory = (c) => (c && VALID_CATEGORIES.includes(c)) ? c : 'other';
             if (_uoS && parts.length >= 1) {
-                rpg.skills.push({ owner: _uoName, name: parts[0], level: parts[1] || '', desc: parts[2] || '' });
+                const sk = { owner: _uoName, name: parts[0], level: parts[1] || '', desc: parts[2] || '' };
+                if (parts[3]) sk.category = normCategory(parts[3]);
+                rpg.skills.push(sk);
             } else if (parts.length >= 2) {
-                rpg.skills.push({ owner: parts[0], name: parts[1], level: parts[2] || '', desc: parts[3] || '' });
+                const sk = { owner: parts[0], name: parts[1], level: parts[2] || '', desc: parts[3] || '' };
+                if (parts[4]) sk.category = normCategory(parts[4]);
+                rpg.skills.push(sk);
             }
             return;
         }
@@ -2744,6 +2752,46 @@ if (sendCharacters) {
                     }
                 }
             }
+        }
+        // craft:六艺（craft:owner|name|tier|xp）
+        if (line.startsWith('craft:')) {
+            const str = line.substring(6).trim();
+            const parts = str.split('|').map(s => s.trim());
+            if (parts.length >= 4) {
+                const owner = parts[0];
+                const name = parts[1];
+                const tier = parts[2];
+                const xpStr = parts[3];
+                if (owner && name && tier && /^\d+$/.test(xpStr)) {
+                    const xp = Number(xpStr);
+                    if (Number.isSafeInteger(xp)) {
+                        if (!rpg.arts) rpg.arts = [];
+                        rpg.arts.push({ owner, name, tier, xp });
+                    } else {
+                        console.warn('[Horae][craft] xp 超出安全整数，忽略:', xpStr);
+                    }
+                } else {
+                    console.warn('[Horae][craft] 非法行，忽略:', line);
+                }
+            }
+            return;
+        }
+        // shentong:神通（shentong:owner|name|desc）
+        if (line.startsWith('shentong:')) {
+            const str = line.substring(9).trim();
+            const parts = str.split('|').map(s => s.trim());
+            if (parts.length >= 2) {
+                const owner = parts[0];
+                const name = parts[1];
+                const desc = parts[2] || '';
+                if (owner && name) {
+                    if (!rpg.shenTong) rpg.shenTong = [];
+                    rpg.shenTong.push({ owner, name, desc });
+                } else {
+                    console.warn('[Horae][shentong] 非法行，忽略:', line);
+                }
+            }
+            return;
         }
         // spirit:神识段位（spirit:tier=蒙昧 或 spirit:xp=100）
         if (line.startsWith('spirit:')) {
@@ -4056,7 +4104,19 @@ generateSystemPromptAddition() {
             ? '\n\n【神识数据——仅变化时输出】\nspirit:tier=段位名（蒙昧/清明/凝照/洞玄/明心/太虚）\nspirit:xp=累计总值（不是增量）\n仅当本回合剧情明确导致神识段位或累计值发生变化时输出对应行。\n没有变化时不要输出 spirit 行。\n神识段位没有定义自动晋升阈值，不要自行计算或晋升。'
             : '\n\n[Spirit Data — output only on change]\nspirit:tier=tier name\nspirit:xp=cumulative total (not delta)\nOutput only when this turn changes spirit tier or xp.\nDo NOT output spirit lines when nothing changes.\nNo auto-promotion thresholds; do NOT compute or promote tiers yourself.';
 
-        return '\n' + base + spiritNote;
+        const craftNote = isZh
+            ? '\n\n【六艺数据——仅变化时输出】\ncraft:归属|名称|段位|累计值\n段位按世界书对六艺的既有定义输出（学徒/一品/二品/三品/四品/五品/六品）。\n累计值为当前总值（不是增量）。\n没有依据改变段位时，不要自行推导或升级。'
+            : '\n\n[Crafts — output only on change]\ncraft:owner|name|tier|cumulative\nTier per worldbook definition.\ncumulative = total (not delta).\nDo NOT promote tiers on your own.';
+
+        const shenTongNote = isZh
+            ? '\n\n【神通数据——仅在获得/变化时输出】\nshentong:归属|名称|描述\n神通通过神识突破/传承/血脉觉醒/机缘获得，不可常规修炼习得。'
+            : '\n\n[Divine Abilities — only on acquire/change]\nshentong:owner|name|description';
+
+        const skillCategoryNote = isZh
+            ? '\n\n【功法分类】\nskill:归属|名称|等级|描述|分类\n分类枚举：main(主修) / attack(攻击) / movement(身法) / body(炼体) / spirit(神识功法) / secret(秘术) / other(其他)\n分类字段可省略（旧格式兼容），缺省归 other。'
+            : '\n\n[Skill Category]\nskill:owner|name|level|desc|category\nCategories: main/attack/movement/body/spirit/secret/other';
+
+        return '\n' + base + spiritNote + craftNote + shenTongNote + skillCategoryNote;
     }
 
     /** RPG 默认提示词（资源优先，支持分段占位符） */

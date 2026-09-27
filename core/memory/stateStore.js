@@ -17,6 +17,7 @@ const EMPTY_SNAPSHOT = () => ({
     reputation: {}, equipment: {}, levels: {}, xp: {},
     currency: {}, strongholds: [],
     spirit: null,
+    arts: {}, shenTong: {},
 });
 
 import { createEmptyMeta, findExistingItemByBaseName, getItemBaseName } from '../horaeManager.js';
@@ -109,8 +110,31 @@ export class StateStore {
                 if (idx >= 0) {
                     if (sk.level != null) snapshot.skills[owner][idx].level = sk.level;
                     if (sk.desc != null) snapshot.skills[owner][idx].desc = sk.desc;
+                    if (sk.category != null) snapshot.skills[owner][idx].category = sk.category;
                 } else {
-                    snapshot.skills[owner].push({ name: sk.name, level: sk.level, desc: sk.desc });
+                    snapshot.skills[owner].push({ name: sk.name, level: sk.level, desc: sk.desc, category: sk.category || 'other' });
+                }
+            }
+            // arts 回放
+            for (const art of (changes.arts || [])) {
+                const owner = _resolve(art.owner);
+                if (!owner || !art.name || !art.tier) continue;
+                if (!snapshot.arts[owner]) snapshot.arts[owner] = {};
+                snapshot.arts[owner][art.name] = { tier: art.tier };
+                if (typeof art.xp === 'number' && Number.isSafeInteger(art.xp) && art.xp >= 0) {
+                    snapshot.arts[owner][art.name].xp = art.xp;
+                }
+            }
+            // shenTong 回放
+            for (const st of (changes.shenTong || [])) {
+                const owner = _resolve(st.owner);
+                if (!owner || !st.name) continue;
+                if (!snapshot.shenTong[owner]) snapshot.shenTong[owner] = [];
+                const idx = snapshot.shenTong[owner].findIndex(x => x.name === st.name);
+                if (idx >= 0) {
+                    if (typeof st.desc === 'string') snapshot.shenTong[owner][idx].desc = st.desc;
+                } else {
+                    snapshot.shenTong[owner].push({ name: st.name, desc: st.desc || '' });
                 }
             }
             for (const sk of (changes.removedSkills || [])) {
@@ -338,8 +362,33 @@ export class StateStore {
             if (idx >= 0) {
                 if (sk.level != null) rpg.skills[owner][idx].level = sk.level;
                 if (sk.desc != null) rpg.skills[owner][idx].desc = sk.desc;
+                if (sk.category != null) rpg.skills[owner][idx].category = sk.category;
             } else {
-                rpg.skills[owner].push({ name: sk.name, level: sk.level, desc: sk.desc });
+                rpg.skills[owner].push({ name: sk.name, level: sk.level, desc: sk.desc, category: sk.category || 'other' });
+            }
+        }
+        // arts 合并（B1 不扩展 userOnly，按 owner 正常写入）
+        for (const art of (changes.arts || [])) {
+            const owner = manager._resolveRpgOwner(art.owner);
+            if (!owner || !art.name || !art.tier) continue;
+            if (!rpg.arts) rpg.arts = {};
+            if (!rpg.arts[owner]) rpg.arts[owner] = {};
+            rpg.arts[owner][art.name] = { tier: art.tier };
+            if (typeof art.xp === 'number' && Number.isSafeInteger(art.xp) && art.xp >= 0) {
+                rpg.arts[owner][art.name].xp = art.xp;
+            }
+        }
+        // shenTong 合并（B1 不扩展 userOnly，按 owner 正常写入）
+        for (const st of (changes.shenTong || [])) {
+            const owner = manager._resolveRpgOwner(st.owner);
+            if (!owner || !st.name) continue;
+            if (!rpg.shenTong) rpg.shenTong = {};
+            if (!rpg.shenTong[owner]) rpg.shenTong[owner] = [];
+            const idx = rpg.shenTong[owner].findIndex(x => x.name === st.name);
+            if (idx >= 0) {
+                if (typeof st.desc === 'string') rpg.shenTong[owner][idx].desc = st.desc;
+            } else {
+                rpg.shenTong[owner].push({ name: st.name, desc: st.desc || '' });
             }
         }
         for (const sk of (changes.removedSkills || [])) {
@@ -589,6 +638,8 @@ export class StateStore {
         rpg.xp = {};
         rpg.currency = {};
         rpg.spirit = null;
+        rpg.arts = {};
+        rpg.shenTong = {};
 
         // ── config 从权威来源写入 rpg（供 _mergeRpgData 使用） ──
         rpg.reputationConfig = repCfg;
