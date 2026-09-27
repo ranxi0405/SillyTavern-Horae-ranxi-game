@@ -14,6 +14,7 @@ import { horaeManager, createEmptyMeta, getItemBaseName } from './core/horaeMana
 import { vectorManager } from './core/vectorManager.js';
 import { FactStore } from './core/memory/factStore.js';
 import { DirectorStore } from './core/memory/directorStore.js';
+import { ThreadStore } from './core/memory/threadStore.js';
 import { sanitizeHiddenKeywords } from './core/memory/hiddenKeywords.js';
 import { calculateRelativeTime, calculateDetailedRelativeTime, formatRelativeTime, generateTimeReference, getCurrentSystemTime, formatStoryDate, formatFullDateTime, parseStoryDate } from './utils/timeUtils.js';
 import { t, tForLang, initI18n, getLanguage, isZhLocale, setLanguage, detectEffectiveAiLangIsZh, detectEffectiveAiLang } from './core/i18n.js';
@@ -21720,9 +21721,12 @@ const HIDDEN_KEYWORDS = [
 /* ============================================================
  * Fact 提取 Prompt 构造
  * ============================================================ */
-function _buildFactExtractionPrompt({ narrative, events, existingFacts, lang = 'zh-CN' }) {
+function _buildFactExtractionPrompt({ narrative, events, existingFacts, existingThreads = [], lang = 'zh-CN' }) {
     const existingStr = existingFacts.length > 0
         ? existingFacts.map(f => `${f.subject}|${f.predicate}|${f.object}`).join('\n')
+        : '（无）';
+    const existingThreadsStr = existingThreads.length > 0
+        ? existingThreads.map(t => `${t.type}|${t.title}|${t.status}`).join('\n')
         : '（无）';
     const eventsStr = events.length > 0
         ? events.map(e => `[${e.level}] ${e.date}: ${e.summary}`).join('\n')
@@ -21732,14 +21736,26 @@ function _buildFactExtractionPrompt({ narrative, events, existingFacts, lang = '
         return `你是事实提取助手。请从剧情摘要和关键事件中，提取长期有效的事实。
 
 【输出格式】
-用 <horaefacts> 和 </horaefacts> 包裹。
-每行一条，格式为：主体|属性|值|可见性
+用 <horaefacts> 包裹事实，用 <horaethreads> 包裹未完成事务。
+
+事实格式（每行一条）：主体|属性|值|可见性
 示例：
 <horaefacts>
 甲角色|门派|丙宗外门|public
 乙角色|身份|真实身份|hidden
-戊地点|性质|隐秘真相|gm_only
 </horaefacts>
+
+事务格式（每行一条）：类型|标题|状态|优先级|可见性|参与者(逗号分隔)|截止日期
+示例：
+<horaethreads>
+quest|寻找某物|open|normal|public|甲角色|
+mystery|某谜团真相|progressing|high|hidden|甲角色|
+appointment|某日某地之约|open|critical|public|甲角色|X年X月X日
+</horaethreads>
+
+【事务类型】quest / npc_goal / world_event / mystery / appointment
+【事务状态】open（新出现/未开始） / progressing（进行中） / blocked（受阻）
+【事务优先级】low / normal / high / critical
 
 【可见性判定】
 - public：原文中多数角色知晓，或可公开讨论
@@ -21772,6 +21788,9 @@ function _buildFactExtractionPrompt({ narrative, events, existingFacts, lang = '
 【已有 facts（用于去重，不要重复提取）】
 ${existingStr}
 
+【已有 threads（用于去重，不要重复提取）】
+${existingThreadsStr}
+
 【本次剧情摘要】
 ${narrative}
 
@@ -21781,14 +21800,14 @@ ${eventsStr}`;
     return `You are a fact extraction assistant. Extract long-lived facts from the narrative and key events.
 
 【Format】
-Wrap in <horaefacts> and </horaefacts>.
-One per line: subject|predicate|object|visibility
-Example:
-<horaefacts>
-ActorA|Sect|Some Sect|public
-ActorB|Identity|real identity|hidden
-PlaceC|Nature|secret truth|gm_only
-</horaefacts>
+Wrap facts in <horaefacts>, threads in <horaethreads>.
+
+Facts (one per line): subject|predicate|object|visibility
+Threads (one per line): type|title|status|priority|visibility|participants(comma)|deadline
+
+Thread types: quest / npc_goal / world_event / mystery / appointment
+Thread status: open / progressing / blocked
+Thread priority: low / normal / high / critical
 
 【Visibility】
 - public: widely known in the narrative
@@ -21826,14 +21845,21 @@ ${eventsStr}`;
  * Fact 响应解析（含 visibility + 硬黑名单过滤）
  * ============================================================ */
 function _parseFactsResponse(raw) {
-    if (!raw || typeof raw !== 'string') return [];
+    const empty = { facts: [], threads: [] };
+    if (!raw || typeof raw !== 'string') return empty;
+
     const cleaned = String(raw).trim();
-    const m = cleaned.match(/<horaefacts>([\s\S]*?)<\/horaefacts>/i);
-    const body = m ? m[1].trim() : cleaned;
-    const facts = [];
     const VALID_VISIBILITY = ['public', 'hidden', 'gm_only'];
+    const VALID_THREAD_TYPES = ['quest', 'npc_goal', 'world_event', 'mystery', 'appointment'];
+    const VALID_THREAD_STATUS = ['open', 'progressing', 'blocked', 'completed', 'failed', 'abandoned'];
+    const VALID_THREAD_PRIORITY = ['low', 'normal', 'high', 'critical'];
     const DEFAULT_VISIBILITY = 'public';
-    for (const line of body.split('\n')) {
+
+    // === Facts ===
+    const facts = [];
+    const factMatch = cleaned.match(/<horaefacts>([\s\S]*?)<\/horaefacts>/i);
+    const factBody = factMatch ? factMatch[1].trim() : '';
+    for (const line of factBody.split('\n')) {
         const t = line.trim();
         if (!t || t.startsWith('#') || t.startsWith('<')) continue;
         const parts = t.split('|').map(s => s.trim()).filter(Boolean);
@@ -21841,7 +21867,6 @@ function _parseFactsResponse(raw) {
 
         const subject = parts[0];
         const predicate = parts[1];
-
         let objectValue;
         let visibility = DEFAULT_VISIBILITY;
         const lastPart = parts[parts.length - 1];
@@ -21851,10 +21876,8 @@ function _parseFactsResponse(raw) {
         } else {
             objectValue = parts.slice(2).join('|');
         }
-
         if (!objectValue) continue;
 
-        // 硬黑名单：subject / predicate / object 任一含关键词 → 丢弃
         const haystack = subject + '\n' + predicate + '\n' + objectValue;
         if (HIDDEN_KEYWORDS.some(kw => haystack.includes(kw))) {
             console.warn('[Horae][Fact] 命中黑名单，丢弃:', subject, predicate, objectValue);
@@ -21870,7 +21893,44 @@ function _parseFactsResponse(raw) {
             source: 'factExtraction',
         });
     }
-    return facts;
+
+    // === Threads ===
+    const threads = [];
+    const threadMatch = cleaned.match(/<horaethreads>([\s\S]*?)<\/horaethreads>/i);
+    const threadBody = threadMatch ? threadMatch[1].trim() : '';
+    for (const line of threadBody.split('\n')) {
+        const t = line.trim();
+        if (!t || t.startsWith('#') || t.startsWith('<')) continue;
+        const parts = t.split('|').map(s => s.trim());
+        if (parts.length < 2) continue;
+
+        const type = parts[0];
+        const title = parts[1];
+        if (!type || !title) continue;
+        if (!VALID_THREAD_TYPES.includes(type)) {
+            console.warn('[Horae][Thread] 未知类型，丢弃:', type, title);
+            continue;
+        }
+
+        const status = (parts[2] && VALID_THREAD_STATUS.includes(parts[2])) ? parts[2] : 'open';
+        const priority = (parts[3] && VALID_THREAD_PRIORITY.includes(parts[3])) ? parts[3] : 'normal';
+        const visibility = (parts[4] && VALID_VISIBILITY.includes(parts[4])) ? parts[4] : DEFAULT_VISIBILITY;
+        const participants = (parts[5] || '').split(/[,，]/).map(s => s.trim()).filter(Boolean);
+        const deadline = (parts[6] && parts[6].trim()) ? parts[6].trim() : null;
+
+        threads.push({
+            type,
+            title,
+            status,
+            priority,
+            visibility,
+            participants,
+            deadline,
+            source: 'factExtraction',
+        });
+    }
+
+    return { facts, threads };
 }
 
 /**
@@ -21926,12 +21986,15 @@ async function _autoExtractFactsFromSummary(summaryId) {
             '关键事件', events.length, '现有 facts', existingFacts.length);
 
         const response = await _generateForAuxTask(prompt, { kind: 'summary', label: 'Fact Extraction' });
-        const facts = _parseFactsResponse(response);
+        const parsed = _parseFactsResponse(response);
+        const facts = parsed.facts || [];
+        const threads = parsed.threads || [];
 
-        if (!facts.length) {
-            console.log('[Horae][Fact] 未提取到 facts');
+        if (!facts.length && !threads.length) {
+            console.log('[Horae][Fact] 未提取到 facts/threads');
             entry._factsExtractedAt = new Date().toISOString();
             entry._factsExtractedCount = 0;
+            entry._threadsExtractedCount = 0;
             try { await getContext().saveChat(); } catch (_) {}
             return;
         }
@@ -21939,10 +22002,20 @@ async function _autoExtractFactsFromSummary(summaryId) {
         const results = factStore.commitBatch(facts);
         const okCount = results.filter(r => !r._error).length;
 
-        console.log('[Horae][Fact] 提取完成: 共', facts.length, '成功', okCount);
+        // 提交 threads
+        let threadOkCount = 0;
+        if (threads.length > 0) {
+            const threadStore = new ThreadStore(horaeManager);
+            const threadResults = threadStore.commitBatch(threads);
+            threadOkCount = threadResults.filter(r => !r._error).length;
+        }
+
+        console.log('[Horae][Fact] 提取完成: facts', facts.length, '成功', okCount,
+            '| threads', threads.length, '成功', threadOkCount);
 
         entry._factsExtractedAt = new Date().toISOString();
         entry._factsExtractedCount = okCount;
+        entry._threadsExtractedCount = threadOkCount;
 
         try { await getContext().saveChat(); } catch (_) {}
     } catch (e) {
@@ -21982,13 +22055,15 @@ async function _testFactExtraction(summaryId) {
     console.log('[Test] AI 原始返回:');
     console.log(response);
 
-    const facts = _parseFactsResponse(response);
-    console.log('[Test] 解析结果:');
-    console.log(JSON.stringify(facts, null, 2));
+    const parsed = _parseFactsResponse(response);
+    console.log('[Test] Facts 解析结果:');
+    console.log(JSON.stringify(parsed.facts, null, 2));
+    console.log('[Test] Threads 解析结果:');
+    console.log(JSON.stringify(parsed.threads, null, 2));
 
-    console.log('[Test] 本测试不自动 commit。满意后再手动调用 FactStore.commitBatch。');
+    console.log('[Test] 本测试不自动 commit。');
 
-    return facts;
+    return parsed;
 }
 
 window._horaeTestFactExtraction = _testFactExtraction;

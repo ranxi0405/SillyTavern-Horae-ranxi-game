@@ -1869,6 +1869,10 @@ if (sendCharacters) {
         const factsSection = this._generateFactsSection();
         if (factsSection) lines.push(factsSection);
 
+        // 未完成事务（Threads）
+        const threadsSection = this._generateThreadsSection();
+        if (threadsSection) lines.push(threadsSection);
+
         return lines.join('\n');
     }
 
@@ -1900,6 +1904,40 @@ if (sendCharacters) {
         for (const f of groups.gm_only) {
             const prefix = isZh ? '[仅天道]' : '[GM-only]';
             lines.push(`· ${prefix} ${f.subject} | ${f.predicate} = ${f.object}`);
+        }
+
+        return lines.join('\n');
+    }
+
+    /** 生成"未完成事务"段（从 chat[0].horae_meta.threads 读取 active 条目） */
+    _generateThreadsSection() {
+        const threads = this.getChat()?.[0]?.horae_meta?.threads || [];
+        const ACTIVE_STATUSES = new Set(['open', 'progressing', 'blocked']);
+        const active = threads.filter(t => ACTIVE_STATUSES.has(t.status));
+        if (active.length === 0) return '';
+
+        const lang = this._getAiOutputLang();
+        const isZh = lang === 'zh-CN' || lang === 'zh-TW';
+
+        const lines = [];
+        lines.push(isZh ? '\n[未完成事务]' : '\n[Active Threads]');
+
+        const priorityOrder = { critical: 0, high: 1, normal: 2, low: 3 };
+        const sorted = [...active].sort((a, b) =>
+            (priorityOrder[a.priority] ?? 2) - (priorityOrder[b.priority] ?? 2)
+        );
+
+        for (const t of sorted) {
+            const typeTag = `[${t.type}]`;
+            const visTag = t.visibility === 'gm_only' ? (isZh ? ' [仅天道]' : ' [GM-only]')
+                         : t.visibility === 'hidden' ? (isZh ? ' [部分知情]' : ' [partial]')
+                         : '';
+            const statusTag = t.status === 'progressing' ? (isZh ? ' (进行中)' : ' (progressing)')
+                            : t.status === 'blocked' ? (isZh ? ' (受阻)' : ' (blocked)')
+                            : '';
+            const deadlineTag = t.deadline ? ` ⏰${t.deadline}` : '';
+            const priorityTag = t.priority === 'critical' ? ' ⚠️' : '';
+            lines.push(`· ${typeTag}${priorityTag} ${t.title}${statusTag}${visTag}${deadlineTag}`);
         }
 
         return lines.join('\n');
