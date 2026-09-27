@@ -27,6 +27,8 @@
  */
 
 const DEFAULT_STATUS = 'active';
+const DEFAULT_VISIBILITY = 'public';
+const VISIBILITY_VALUES = ['public', 'hidden', 'gm_only'];
 
 export class FactStore {
     constructor(manager) {
@@ -64,13 +66,43 @@ export class FactStore {
     }
 
     /**
+     * 按可见性读取 active facts
+     * @param {string|string[]} filter - 'public' | 'hidden' | 'gm_only' | 数组 | 'all'
+     */
+    getVisible(filter = 'all') {
+        const active = this.getActive();
+        if (filter === 'all') return active;
+        const allowed = Array.isArray(filter) ? new Set(filter) : new Set([filter]);
+        return active.filter(f => allowed.has(f.visibility || DEFAULT_VISIBILITY));
+    }
+
+    /**
+     * 向后兼容：读取旧数据时，没有 visibility 字段的视为 public
+     */
+    normalizeLegacy() {
+        const slot = this._ensureSlot();
+        if (!slot) return 0;
+        let fixed = 0;
+        for (const f of slot) {
+            if (!f.visibility || !VISIBILITY_VALUES.includes(f.visibility)) {
+                f.visibility = DEFAULT_VISIBILITY;
+                fixed++;
+            }
+        }
+        return fixed;
+    }
+
+    /**
      * 提交一条 fact
      * @returns {object} 提交后的 fact
      */
-    commit({ subject, predicate, object, confidence = 'confirmed', since = null, source = '' }) {
+    commit({ subject, predicate, object, confidence = 'confirmed', visibility = DEFAULT_VISIBILITY, since = null, source = '' }) {
         if (!subject || !predicate || object === undefined || object === null) {
             throw new Error('FactStore.commit: subject/predicate/object required');
         }
+
+        // visibility 规范化（非法值回退到 public）
+        if (!VISIBILITY_VALUES.includes(visibility)) visibility = DEFAULT_VISIBILITY;
 
         const slot = this._ensureSlot();
         if (!slot) throw new Error('FactStore.commit: no chat slot');
@@ -89,6 +121,7 @@ export class FactStore {
             object,
             status: DEFAULT_STATUS,
             confidence,
+            visibility,
             since: since || null,
             source: source || '',
             supersededBy: null,
@@ -97,7 +130,7 @@ export class FactStore {
         if (existingIdx >= 0) {
             const old = slot[existingIdx];
             // 值相同则跳过（幂等）
-            if (String(old.object) === String(object) && old.confidence === confidence) {
+            if (String(old.object) === String(object) && old.confidence === confidence && (old.visibility || DEFAULT_VISIBILITY) === visibility) {
                 return structuredClone(old);
             }
             // 值不同 → 旧 fact superseded
