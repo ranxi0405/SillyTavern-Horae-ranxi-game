@@ -91,7 +91,7 @@ export class StateStore {
             if (changes.spirit && typeof changes.spirit === 'object') {
                 const VALID_TIERS = ['蒙昧', '清明', '凝照', '洞玄', '明心', '太虚'];
                 const hasValidTier = typeof changes.spirit.tier === 'string' && VALID_TIERS.includes(changes.spirit.tier);
-                const hasValidXp = typeof changes.spirit.xp === 'number' && Number.isInteger(changes.spirit.xp) && changes.spirit.xp >= 0;
+                const hasValidXp = typeof changes.spirit.xp === 'number' && Number.isSafeInteger(changes.spirit.xp) && changes.spirit.xp >= 0;
                 if (hasValidTier || hasValidXp) {
                     if (!snapshot.spirit) snapshot.spirit = {};
                     if (hasValidTier) snapshot.spirit.tier = changes.spirit.tier;
@@ -315,7 +315,7 @@ export class StateStore {
         if (changes.spirit && typeof changes.spirit === 'object') {
             const VALID_TIERS = ['蒙昧', '清明', '凝照', '洞玄', '明心', '太虚'];
             const hasValidTier = typeof changes.spirit.tier === 'string' && VALID_TIERS.includes(changes.spirit.tier);
-            const hasValidXp = typeof changes.spirit.xp === 'number' && Number.isInteger(changes.spirit.xp) && changes.spirit.xp >= 0;
+            const hasValidXp = typeof changes.spirit.xp === 'number' && Number.isSafeInteger(changes.spirit.xp) && changes.spirit.xp >= 0;
             if (hasValidTier || hasValidXp) {
                 if (!rpg.spirit) rpg.spirit = {};
                 if (hasValidTier) rpg.spirit.tier = changes.spirit.tier;

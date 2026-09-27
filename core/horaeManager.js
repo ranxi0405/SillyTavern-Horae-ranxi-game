@@ -1515,8 +1515,7 @@ if (sendCharacters) {
             // 神识段位显示（spirit.tier + spirit.xp）
             const spirit = rpg.spirit;
             if (spirit && (spirit.tier || typeof spirit.xp === 'number')) {
-                if (!_cUoB || userName === userName) {
-                    if (!filterRpg || rpgAllowed.has(userName)) {
+                if (!filterRpg || rpgAllowed.has(userName)) {
                         const tierLabel = L('神识', 'Spirit', '神识', '신식', 'Дух');
                         const xpLabel = L('累积', 'xp', '累積', '누적', 'накопл.');
                         const tierVal = spirit.tier || '—';
@@ -2763,12 +2762,16 @@ if (sendCharacters) {
                         console.warn('[Horae][spirit] 非法 tier，忽略:', val);
                     }
                 } else if (key === 'xp') {
-                    const n = Number(val);
-                    if (Number.isInteger(n) && n >= 0) {
-                        if (!rpg.spirit) rpg.spirit = {};
-                        rpg.spirit.xp = n;
+                    if (/^\d+$/.test(val)) {
+                        const n = Number(val);
+                        if (Number.isSafeInteger(n)) {
+                            if (!rpg.spirit) rpg.spirit = {};
+                            rpg.spirit.xp = n;
+                        } else {
+                            console.warn('[Horae][spirit] xp 超出安全整数，忽略:', val);
+                        }
                     } else {
-                        console.warn('[Horae][spirit] 非法 xp，忽略:', val);
+                        console.warn('[Horae][spirit] 非法 xp（非十进制非负整数），忽略:', val);
                     }
                 }
             }
@@ -4051,8 +4054,8 @@ generateSystemPromptAddition() {
         const lang = this._getAiOutputLang();
         const isZh = lang === 'zh-CN' || lang === 'zh-TW';
         const spiritNote = isZh
-            ? '\n\n【神识段位（仅变化时输出）】\nspirit:tier=段位名（蒙昧/清明/凝照/洞玄/明心/太虚）\nspirit:xp=累计总值（不是增量）\n仅在剧情明确发生段位变化或累计值变化时输出对应行，无变化不输出。'
-            : '\n\n[Spirit Tier (output only on change)]\nspirit:tier=tier name\nspirit:xp=cumulative value (total, not delta)\nOutput only when tier or xp changes; otherwise skip.';
+            ? '\n\n【神识数据——仅变化时输出】\nspirit:tier=段位名（蒙昧/清明/凝照/洞玄/明心/太虚）\nspirit:xp=累计总值（不是增量）\n仅当本回合剧情明确导致神识段位或累计值发生变化时输出对应行。\n没有变化时不要输出 spirit 行。\n神识段位没有定义自动晋升阈值，不要自行计算或晋升。'
+            : '\n\n[Spirit Data — output only on change]\nspirit:tier=tier name\nspirit:xp=cumulative total (not delta)\nOutput only when this turn changes spirit tier or xp.\nDo NOT output spirit lines when nothing changes.\nNo auto-promotion thresholds; do NOT compute or promote tiers yourself.';
 
         return '\n' + base + spiritNote;
     }
