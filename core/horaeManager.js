@@ -2505,7 +2505,8 @@ if (sendCharacters) {
             const type = barNormal[1].toLowerCase();
             const owner = _uoB ? _uoName : barNormal[2].trim();
             const current = parseInt(barNormal[3]);
-            const max = parseInt(barNormal[4]);
+            let max = parseInt(barNormal[4]);
+            if (current > max) max = current;
             const label = barNormal[5]?.trim() || null;
             if (!rpg.bars[owner]) rpg.bars[owner] = {};
             rpg.bars[owner][type] = label ? [current, max, label] : [current, max];
@@ -2514,7 +2515,8 @@ if (sendCharacters) {
         if (barUo && !/^(status|skill)$/i.test(barUo[1])) {
             const type = barUo[1].toLowerCase();
             const current = parseInt(barUo[2]);
-            const max = parseInt(barUo[3]);
+            let max = parseInt(barUo[3]);
+            if (current > max) max = current;
             const label = barUo[4]?.trim() || null;
             if (!rpg.bars[_uoName]) rpg.bars[_uoName] = {};
             rpg.bars[_uoName][type] = label ? [current, max, label] : [current, max];

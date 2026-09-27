@@ -76,7 +76,14 @@ export class StateStore {
             for (const [raw, barData] of Object.entries(changes.bars || {})) {
                 const owner = _resolve(raw);
                 if (!snapshot.bars[owner]) snapshot.bars[owner] = {};
-                Object.assign(snapshot.bars[owner], barData);
+                for (const [type, val] of Object.entries(barData)) {
+                    const old = snapshot.bars[owner][type];
+                    if (old && Array.isArray(old) && old[2] && Array.isArray(val) && !val[2]) {
+                        snapshot.bars[owner][type] = [val[0], val[1], old[2]];
+                    } else {
+                        snapshot.bars[owner][type] = val;
+                    }
+                }
             }
             for (const [raw, effects] of Object.entries(changes.status || {})) {
                 const owner = _resolve(raw);
@@ -281,7 +288,14 @@ export class StateStore {
             const owner = manager._resolveRpgOwner(raw);
             if (manager.settings?.rpgBarsUserOnly && owner !== _mUN) continue;
             if (!rpg.bars[owner]) rpg.bars[owner] = {};
-            Object.assign(rpg.bars[owner], barData);
+            for (const [type, val] of Object.entries(barData)) {
+                const old = rpg.bars[owner][type];
+                if (old && Array.isArray(old) && old[2] && Array.isArray(val) && !val[2]) {
+                    rpg.bars[owner][type] = [val[0], val[1], old[2]];
+                } else {
+                    rpg.bars[owner][type] = val;
+                }
+            }
         }
         for (const [raw, effects] of Object.entries(changes.status || {})) {
             const owner = manager._resolveRpgOwner(raw);
