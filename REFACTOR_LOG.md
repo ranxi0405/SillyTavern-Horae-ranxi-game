@@ -70,6 +70,18 @@ Prompt 投影      → onPromptReady（固定前缀 + 动态区）
   - gm_only：[仅天道] 前缀
   - 实测：注入位置正确，5 条 facts 完整显示
 
+**Thread 层**
+- ThreadStore v0.1：长期未完成事务结构化存储
+  - 类型：quest / npc_goal / world_event / mystery / appointment
+  - 状态：open / progressing / blocked / completed / failed / abandoned
+  - 优先级：low / normal / high / critical
+  - 幂等：同 type + title 相似 → 更新（不新建）
+  - participants 并集，relatedFactIds 并集
+  - visibility 复用 Fact 机制
+- 与 Fact 合并提取：一次 AI 调用返回 <horaefacts> + <horaethreads>
+- 注入 [未完成事务] 段：按 priority 排序，显示 type/status/deadline 标签
+- Agenda 与 Thread 共存：Agenda 是 UI 投影，Thread 是后端真源
+
 **Director 层**
 - DirectorStore v0.1：玩家长期导演指令识别
 - 12 类识别：pacing / world / format / rules / style /
@@ -102,7 +114,6 @@ Prompt 投影      → onPromptReady（固定前缀 + 动态区）
 ## 六、未完成事项
 
 - Vector 系统当前是独立层，未与 FactStore 打通
-- Thread 系统（未开始，Agenda 是临时替代）
 
 ## 七、交接说明
 
