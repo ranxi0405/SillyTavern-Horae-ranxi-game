@@ -25,11 +25,11 @@
  *   }
  */
 
-const SIMILARITY_THRESHOLD = 0.5;
+const SIMILARITY_THRESHOLD = 0.4;
 
 const DIRECTOR_CATEGORIES = {
     pacing:     /节奏|太快|太慢|太琐碎|推进|一步到位|跳跃|拖沓|压缩|详略/,
-    world:      /世界.{0,4}(活|运转|时间线)|NPC.{0,5}独立|不围绕|世界回响|世界是活/,
+    world:      /世界.{0,10}(活|运转|时间线|回响|规律|自转)|NPC.{0,5}独立|不围绕|世界是活/,
     format:     /时间格式|阿拉伯数字|24\s*小时|年份|日期.{0,4}(格式|写)|几点|时刻/,
     rules:      /规则|设定|机制|判定|数值.{0,3}(计算|规则)|按.{0,4}设定/,
     style:      /叙事|文风|风格|描写|细节|啰嗦|简洁|写实|不.{0,3}(要|需).{0,3}(华丽|冗长)/,
@@ -120,7 +120,8 @@ export class DirectorStore {
         if (A.size === 0 || B.size === 0) return 0;
         let inter = 0;
         for (const x of A) if (B.has(x)) inter++;
-        return inter / Math.min(A.size, B.size);
+        const union = A.size + B.size - inter;
+        return union > 0 ? inter / union : 0;
     }
 
     /**
