@@ -12,7 +12,6 @@ clean-*.cjs
 verify*.cjs
 
 # 世界书副本（保留主文件）
-worldbook-v*.json
 
 # 系统
 .DS_Store
