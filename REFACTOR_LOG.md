@@ -64,6 +64,11 @@ Prompt 投影      → onPromptReady（固定前缀 + 动态区）
 - 输入：narrative + 关键/重要事件（最多 30 条）+ existingFacts
 - 幂等：entry._factsExtractedAt 标记
 - 实测：新存档首次自动提取 5/5 成功，无物品越界
+- **Facts 注入 Prompt**：generateCompactPrompt 尾部追加 [已知事实] 段
+  - public：直接列出（· 主体 | 属性 = 值）
+  - hidden：[部分知情] 前缀
+  - gm_only：[仅天道] 前缀
+  - 实测：注入位置正确，5 条 facts 完整显示
 
 **Director 层**
 - DirectorStore v0.1：玩家长期导演指令识别
@@ -96,9 +101,6 @@ Prompt 投影      → onPromptReady（固定前缀 + 动态区）
 
 ## 六、未完成事项
 
-- summaryText 层的隐藏设定过滤（防止无界灵根注入主模型）
-- 元游戏指令识别（避免"玩家查询"误记为"角色得知"）
-- L2 摘要读取 originalEvents（防止 L1→L2 信息损失）
 - Vector 系统当前是独立层，未与 FactStore 打通
 - Thread 系统（未开始，Agenda 是临时替代）
 
