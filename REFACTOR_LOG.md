@@ -59,6 +59,11 @@ Prompt 投影      → onPromptReady（固定前缀 + 动态区）
 - FactStore v0.2：visibility 三档（public / hidden / gm_only）
 - Fact 提取：AI 从 narrative + events 提取结构化事实
 - 硬黑名单：无界灵根 / 无界道体（永不提取）
+- **自动提取系统上线**：L1 摘要成功后 500ms 触发 fire-and-forget
+- 边界加强：永不提取物品信息（Items 系统独立管理）
+- 输入：narrative + 关键/重要事件（最多 30 条）+ existingFacts
+- 幂等：entry._factsExtractedAt 标记
+- 实测：新存档首次自动提取 5/5 成功，无物品越界
 
 **Director 层**
 - DirectorStore v0.1：玩家长期导演指令识别
@@ -91,7 +96,6 @@ Prompt 投影      → onPromptReady（固定前缀 + 动态区）
 
 ## 六、未完成事项
 
-- FactStore 自动提取流程接入（摘要生成后自动触发）
 - summaryText 层的隐藏设定过滤（防止无界灵根注入主模型）
 - 元游戏指令识别（避免"玩家查询"误记为"角色得知"）
 - L2 摘要读取 originalEvents（防止 L1→L2 信息损失）
