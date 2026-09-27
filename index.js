@@ -21738,11 +21738,29 @@ function _buildFactExtractionPrompt({ narrative, events, existingFacts, existing
 【输出格式】
 用 <horaefacts> 包裹事实，用 <horaethreads> 包裹未完成事务。
 
-事实格式（每行一条）：主体|属性|值|可见性
+事实格式（每行一条，8 字段）：
+主体|属性|值|可见性|动作|target主体|target属性|target值
+
+【动作 action】
+- add：新增事实（默认）。已存在的同三元组会幂等跳过。
+- supersede：新事实取代旧事实。需填 target 定位旧事实。
+- invalidate：旧事实失效。需填 target 定位旧事实。
+
+【target 字段】仅 supersede / invalidate 时填写，add 时留空。
+
+【动作选择规则】
+- 技能、关系、持有物、见过的地方等可并存 → add
+- 当前状态类（境界、位置、身份、门派等）：值变化时用 supersede
+- 事实被推翻/失效 → invalidate
+- 无法确定 → add（宁可冗余，不可误删）
+
 示例：
 <horaefacts>
-甲角色|门派|丙宗外门|public
-乙角色|身份|真实身份|hidden
+甲角色|门派|丙宗外门|public|add|||
+乙角色|身份|真实身份|hidden|add|||
+甲角色|境界|炼气|public|add|||
+甲角色|境界|筑基|public|supersede|甲角色|境界|炼气
+乙角色|伪装身份|散修|hidden|invalidate|乙角色|伪装身份|散修
 </horaefacts>
 
 事务格式（每行一条）：类型|标题|状态|优先级|可见性|参与者(逗号分隔)|截止日期
@@ -21802,7 +21820,16 @@ ${eventsStr}`;
 【Format】
 Wrap facts in <horaefacts>, threads in <horaethreads>.
 
-Facts (one per line): subject|predicate|object|visibility
+Facts (one per line, 8 fields):
+subject|predicate|object|visibility|action|target_subject|target_predicate|target_object
+
+Actions:
+- add: create new fact (default)
+- supersede: new fact replaces old; fill target to locate old fact
+- invalidate: mark old fact invalid; fill target to locate old fact
+
+target fields are only used for supersede / invalidate; leave empty for add.
+When unsure, use add (prefer redundancy over accidental deletion).
 Threads (one per line): type|title|status|priority|visibility|participants(comma)|deadline
 
 Thread types: quest / npc_goal / world_event / mystery / appointment
@@ -21859,26 +21886,41 @@ function _parseFactsResponse(raw) {
     const facts = [];
     const factMatch = cleaned.match(/<horaefacts>([\s\S]*?)<\/horaefacts>/i);
     const factBody = factMatch ? factMatch[1].trim() : '';
+    const VALID_ACTIONS = ['add', 'supersede', 'invalidate'];
     for (const line of factBody.split('\n')) {
         const t = line.trim();
         if (!t || t.startsWith('#') || t.startsWith('<')) continue;
-        const parts = t.split('|').map(s => s.trim()).filter(Boolean);
+
+        // 8 字段：主体|属性|值|可见性|动作|target主体|target属性|target值
+        // 用 split('|') 不用 filter，保留空字段以定位 target
+        const parts = t.split('|').map(s => s.trim());
         if (parts.length < 3) continue;
 
         const subject = parts[0];
         const predicate = parts[1];
-        let objectValue;
-        let visibility = DEFAULT_VISIBILITY;
-        const lastPart = parts[parts.length - 1];
-        if (parts.length >= 4 && VALID_VISIBILITY.includes(lastPart)) {
-            visibility = lastPart;
-            objectValue = parts.slice(2, parts.length - 1).join('|');
-        } else {
-            objectValue = parts.slice(2).join('|');
-        }
-        if (!objectValue) continue;
+        const objectValue = parts[2];
+        if (!subject || !predicate || !objectValue) continue;
 
-        const haystack = subject + '\n' + predicate + '\n' + objectValue;
+        const visibility = (parts[3] && VALID_VISIBILITY.includes(parts[3]))
+            ? parts[3] : DEFAULT_VISIBILITY;
+
+        let action = (parts[4] && VALID_ACTIONS.includes(parts[4])) ? parts[4] : 'add';
+
+        let target = null;
+        const tS = (parts[5] || '').trim();
+        const tP = (parts[6] || '').trim();
+        const tO = (parts[7] || '').trim();
+        if ((action === 'supersede' || action === 'invalidate') && tS && tP && tO) {
+            target = { subject: tS, predicate: tP, object: tO };
+        } else if (action === 'supersede' || action === 'invalidate') {
+            // 缺少 target → 降级为 add
+            console.warn('[Horae][Fact] action=', action, '但缺 target，降级 add:', subject, predicate, objectValue);
+            action = 'add';
+        }
+
+        // 黑名单
+        const haystack = subject + '\n' + predicate + '\n' + objectValue
+            + (target ? '\n' + target.subject + '\n' + target.predicate + '\n' + target.object : '');
         if (HIDDEN_KEYWORDS.some(kw => haystack.includes(kw))) {
             console.warn('[Horae][Fact] 命中黑名单，丢弃:', subject, predicate, objectValue);
             continue;
@@ -21889,6 +21931,8 @@ function _parseFactsResponse(raw) {
             predicate,
             object: objectValue,
             visibility,
+            action,
+            target,
             confidence: 'confirmed',
             source: 'factExtraction',
         });
