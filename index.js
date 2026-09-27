@@ -7572,6 +7572,33 @@ function updateRpgDisplay() {
         }
     }
 
+    /** 按 category 分组 skills */
+    function _groupSkillsByCategory(skills) {
+        const valid = ['main', 'attack', 'movement', 'body', 'spirit', 'secret', 'other'];
+        const groups = { main: [], attack: [], movement: [], body: [], spirit: [], secret: [], other: [] };
+        for (const sk of (skills || [])) {
+            const cat = (sk.category && valid.includes(sk.category)) ? sk.category : 'other';
+            groups[cat].push(sk);
+        }
+        return groups;
+    }
+
+    /** 渲染单个功法分组的 HTML */
+    function _buildTechniquesGroupHtml(groupLabel, list, ownerName) {
+        let html = '<details class="horae-rpg-technique-group" open>';
+        html += `<summary class="horae-rpg-technique-group-head">${escapeHtml(groupLabel)} (${list.length})</summary>`;
+        html += '<div class="horae-rpg-card-skills">';
+        for (const sk of list) {
+            html += `<details class="horae-rpg-skill-detail"><summary class="horae-rpg-skill-summary">${escapeHtml(sk.name)}`;
+            if (sk.level) html += ` <span class="horae-rpg-skill-lv">${escapeHtml(sk.level)}</span>`;
+            html += `<button class="horae-rpg-skill-del" data-owner="${escapeHtml(ownerName)}" data-skill="${escapeHtml(sk.name)}" title="${t('common.delete')}"><i class="fa-solid fa-xmark"></i></button></summary>`;
+            if (sk.desc) html += `<div class="horae-rpg-skill-desc">${escapeHtml(sk.desc)}</div>`;
+            html += '</details>';
+        }
+        html += '</div></details>';
+        return html;
+    }
+
     /** 构建单个角色的分页标签 HTML */
     function _buildCharTabs(name) {
         const tabs = [];
@@ -7606,7 +7633,35 @@ function updateRpgDisplay() {
             html += '</div>';
             panels.push(html);
         }
-        if (sendSkills && (!settings.rpgSkillsUserOnly || _isU)) {
+        if (sendSkills && _isU) {
+            // 主角：功法（按 category 分组）
+            tabs.push({ id: `skill_${eid}`, label: t('ui.rpgTabTechniques') });
+            let html = '';
+            if (skills.length > 0) {
+                const grouped = _groupSkillsByCategory(skills);
+                const CATEGORY_ORDER = [
+                    ['main', t('ui.rpgSkillCatMain')],
+                    ['attack', t('ui.rpgSkillCatAttack')],
+                    ['movement', t('ui.rpgSkillCatMovement')],
+                    ['body', t('ui.rpgSkillCatBody')],
+                    ['spirit', t('ui.rpgSkillCatSpirit')],
+                    ['secret', t('ui.rpgSkillCatSecret')],
+                    ['other', t('ui.rpgSkillCatOther')],
+                ];
+                let hasAny = false;
+                for (const [cat, label] of CATEGORY_ORDER) {
+                    const list = grouped[cat] || [];
+                    if (list.length === 0) continue;
+                    html += _buildTechniquesGroupHtml(label, list, name);
+                    hasAny = true;
+                }
+                if (!hasAny) html = `<div class="horae-rpg-skills-empty">${t('ui.noSkills')}</div>`;
+            } else {
+                html += `<div class="horae-rpg-skills-empty">${t('ui.noSkills')}</div>`;
+            }
+            panels.push(html);
+        } else if (sendSkills && !settings.rpgSkillsUserOnly) {
+            // NPC：技能平铺（保留原逻辑）
             tabs.push({ id: `skill_${eid}`, label: t('ui.rpgTabSkill') });
             let html = '';
             if (skills.length > 0) {
