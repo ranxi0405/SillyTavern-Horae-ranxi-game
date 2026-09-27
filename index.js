@@ -18209,6 +18209,15 @@ async function checkAutoSummary() {
         await context.saveChat();
         updateTimelineDisplay();
         showToast(t('toast.autoSummaryDone', { from: msgIndices[0], to: msgIndices[msgIndices.length - 1] }), 'success');
+
+        // ★ 触发 fact 提取（fire-and-forget，不阻塞主流程）
+        if (settings.autoSummaryEnabled) {
+            setTimeout(() => {
+                _autoExtractFactsFromSummary(summaryId).catch(e =>
+                    console.warn('[Horae][Fact] 自动提取异常:', e)
+                );
+            }, 500);
+        }
     } catch (err) {
         console.error('[Horae] auto summary failed:', err);
         showToast(t('toast.autoSummaryFailed', { error: err.message || err }), 'error');
@@ -21748,8 +21757,13 @@ function _buildFactExtractionPrompt({ narrative, events, existingFacts, lang = '
 
 【提取规则】
 1. 只提取"长期结论"，不提取"过程"和"临时状态"
-2. 属性优先使用以下词汇（也允许其他明确属性）：
-   身份、境界、灵根、性别、年龄、种族、职业、门派、位置、关系、目标
+2. 属性优先使用以下词汇：
+   身份、境界、灵根、性别、年龄、种族、职业、门派、关系、目标
+
+【永不提取 —— 重要】
+- 物品相关信息一律不提取（包括：持有物品、物品性质、物品功能、物品位置、物品状态、物品数量、物品来源）
+- 物品由独立系统管理，Facts 完全不涉及物品
+- 忽略所有关于"冉汐持有某物""某物有什么性质"的内容
 3. 只提取"确认的事实"，不提取推测
 4. 不提取临时状态（灵力、气血、当前情绪、零散物品）
 5. 不重复提取已有事实（见下方已有 facts 列表）
@@ -21859,6 +21873,83 @@ function _parseFactsResponse(raw) {
     return facts;
 }
 
+/**
+ * 自动从 L1 摘要提取 facts 并 commit
+ * 由 checkAutoSummary 在 L1 成功提交后触发（fire-and-forget）
+ */
+async function _autoExtractFactsFromSummary(summaryId) {
+    try {
+        const chat = horaeManager.getChat();
+        if (!chat?.length) return;
+
+        const entry = chat[0]?.horae_meta?.autoSummaries?.find(s => s.id === summaryId);
+        if (!entry) {
+            console.warn('[Horae][Fact] 找不到 summary:', summaryId);
+            return;
+        }
+
+        // 幂等：已提取过则跳过
+        if (entry._factsExtractedAt) {
+            console.log('[Horae][Fact] 已提取过，跳过:', summaryId);
+            return;
+        }
+
+        // 收集关键/重要事件（最多 30 条，按 msgIdx 降序）
+        const events = (entry.originalEvents || [])
+            .filter(item => {
+                const lv = item?.event?.level;
+                if (lv !== '关键' && lv !== '重要') return false;
+                if (!item?.event?.summary) return false;
+                if (item?.event?.isSummary || item?.event?._summaryId) return false;
+                if (item?.event?._carryoverSeed) return false;
+                return true;
+            })
+            .sort((a, b) => (b.msgIdx ?? 0) - (a.msgIdx ?? 0))
+            .slice(0, 30)
+            .map(item => ({
+                level: item.event.level,
+                date: item.timestamp?.story_date || '?',
+                summary: item.event.summary,
+            }));
+
+        const factStore = new FactStore(horaeManager);
+        const existingFacts = factStore.getActive();
+
+        const prompt = _buildFactExtractionPrompt({
+            narrative: entry.summaryText || '',
+            events,
+            existingFacts,
+            lang: 'zh-CN',
+        });
+
+        console.log('[Horae][Fact] 开始提取: prompt 长度', prompt.length,
+            '关键事件', events.length, '现有 facts', existingFacts.length);
+
+        const response = await _generateForAuxTask(prompt, { kind: 'summary', label: 'Fact Extraction' });
+        const facts = _parseFactsResponse(response);
+
+        if (!facts.length) {
+            console.log('[Horae][Fact] 未提取到 facts');
+            entry._factsExtractedAt = new Date().toISOString();
+            entry._factsExtractedCount = 0;
+            try { await getContext().saveChat(); } catch (_) {}
+            return;
+        }
+
+        const results = factStore.commitBatch(facts);
+        const okCount = results.filter(r => !r._error).length;
+
+        console.log('[Horae][Fact] 提取完成: 共', facts.length, '成功', okCount);
+
+        entry._factsExtractedAt = new Date().toISOString();
+        entry._factsExtractedCount = okCount;
+
+        try { await getContext().saveChat(); } catch (_) {}
+    } catch (e) {
+        console.warn('[Horae][Fact] 自动提取失败:', e);
+    }
+}
+
 async function _testFactExtraction(summaryId) {
     const chat = horaeManager.getChat();
     if (!chat?.length) { console.warn('无 chat'); return; }
@@ -21901,4 +21992,5 @@ async function _testFactExtraction(summaryId) {
 }
 
 window._horaeTestFactExtraction = _testFactExtraction;
+window._horaeTestAutoFact = _autoExtractFactsFromSummary;
 console.log('[Horae] Fact 提取测试已就绪：window._horaeTestFactExtraction()');
