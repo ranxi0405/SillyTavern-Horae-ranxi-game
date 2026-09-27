@@ -21638,6 +21638,17 @@ jQuery(async () => {
  * 完成后删除
  * ============================================================ */
 
+/* ============================================================
+ * Fact 提取：隐藏设定黑名单（硬约束，永不提取）
+ * ============================================================ */
+const HIDDEN_KEYWORDS = [
+    '无界灵根',
+    '无界道体',
+];
+
+/* ============================================================
+ * Fact 提取 Prompt 构造
+ * ============================================================ */
 function _buildFactExtractionPrompt({ narrative, events, existingFacts, lang = 'zh-CN' }) {
     const existingStr = existingFacts.length > 0
         ? existingFacts.map(f => `${f.subject}|${f.predicate}|${f.object}`).join('\n')
@@ -21651,23 +21662,33 @@ function _buildFactExtractionPrompt({ narrative, events, existingFacts, lang = '
 
 【输出格式】
 用 <horaefacts> 和 </horaefacts> 包裹。
-每行一条，格式为：主体|属性|值
+每行一条，格式为：主体|属性|值|可见性
 示例：
 <horaefacts>
-冉汐|门派|青云宗外门
-陆离|身份|天剑宗卧底
-黑铁匣|持有者|冉汐
+甲角色|门派|丙宗外门|public
+乙角色|身份|真实身份|hidden
+戊地点|性质|隐秘真相|gm_only
 </horaefacts>
+
+【可见性判定】
+- public：原文中多数角色知晓，或可公开讨论
+- hidden：原文暗示只有部分角色知道，其他角色不知道
+- gm_only：原文只从叙事视角透露，没有任何角色明确知道
+判定方法：只看原文中"谁明确知道了这条信息"。拿不准时选 public。
+
+【主角专属隐藏设定 —— 永不提取】
+以下类型属于主角专属隐藏设定，任何情况下都跳过不提取：
+- 主角的真实出身真相（与表面身份不同者）
+- 主角的前世 / 转世相关信息
+- 主角的特殊血脉 / 血脉觉醒
+- 任何被命名的"超脱级"灵根 / 体质
+如果原文出现相关线索，直接跳过。不要尝试总结、暗示或概括。
 
 【提取规则】
 1. 只提取"长期结论"，不提取"过程"和"临时状态"
-   ❌ 冉汐去了药铺
-   ✅ 冉汐|门派|青云宗外门
 2. 属性优先使用以下词汇（也允许其他明确属性）：
-   身份、境界、灵根、性别、年龄、种族、职业、门派、位置、持有者、性质、关系、目标
+   身份、境界、灵根、性别、年龄、种族、职业、门派、位置、关系、目标
 3. 只提取"确认的事实"，不提取推测
-   ❌ 陆离可能是卧底
-   ✅ 陆离|身份|天剑宗卧底
 4. 不提取临时状态（灵力、气血、当前情绪、零散物品）
 5. 不重复提取已有事实（见下方已有 facts 列表）
 6. 有几条提几条，不设上限
@@ -21685,14 +21706,35 @@ ${eventsStr}`;
 
 【Format】
 Wrap in <horaefacts> and </horaefacts>.
-One per line: subject|predicate|object
+One per line: subject|predicate|object|visibility
+Example:
+<horaefacts>
+ActorA|Sect|Some Sect|public
+ActorB|Identity|real identity|hidden
+PlaceC|Nature|secret truth|gm_only
+</horaefacts>
+
+【Visibility】
+- public: widely known in the narrative
+- hidden: only some characters know
+- gm_only: no character explicitly knows; only narrative reveals it
+When unsure, choose public.
+
+【Protagonist hidden settings — NEVER extract】
+The following are the protagonist's exclusive hidden settings and must NEVER be extracted under any circumstance:
+- The protagonist's true origin (different from surface identity)
+- Past life / reincarnation information
+- Special bloodline / bloodline awakening
+- Any named "transcendent" spirit root or physique
+If the narrative hints at these, skip. Do not summarize, imply, or paraphrase.
 
 【Rules】
 1. Only "long-term conclusions", not "processes" or "temporary states"
-2. Preferred predicates: identity, realm, root, gender, age, race, occupation, sect, location, holder, nature, relation, goal
+2. Preferred predicates: identity, realm, root, gender, age, race, occupation, sect, location, relation, goal
 3. Only confirmed facts, not speculations
 4. No temporary states
 5. No duplicates with existing facts below
+6. Extract as many as there are, no upper limit
 
 【Existing facts】
 ${existingStr}
@@ -21704,21 +21746,50 @@ ${narrative}
 ${eventsStr}`;
 }
 
+/* ============================================================
+ * Fact 响应解析（含 visibility + 硬黑名单过滤）
+ * ============================================================ */
 function _parseFactsResponse(raw) {
     if (!raw || typeof raw !== 'string') return [];
     const cleaned = String(raw).trim();
     const m = cleaned.match(/<horaefacts>([\s\S]*?)<\/horaefacts>/i);
     const body = m ? m[1].trim() : cleaned;
     const facts = [];
+    const VALID_VISIBILITY = ['public', 'hidden', 'gm_only'];
+    const DEFAULT_VISIBILITY = 'public';
     for (const line of body.split('\n')) {
         const t = line.trim();
         if (!t || t.startsWith('#') || t.startsWith('<')) continue;
         const parts = t.split('|').map(s => s.trim()).filter(Boolean);
         if (parts.length < 3) continue;
+
+        const subject = parts[0];
+        const predicate = parts[1];
+
+        let objectValue;
+        let visibility = DEFAULT_VISIBILITY;
+        const lastPart = parts[parts.length - 1];
+        if (parts.length >= 4 && VALID_VISIBILITY.includes(lastPart)) {
+            visibility = lastPart;
+            objectValue = parts.slice(2, parts.length - 1).join('|');
+        } else {
+            objectValue = parts.slice(2).join('|');
+        }
+
+        if (!objectValue) continue;
+
+        // 硬黑名单：subject / predicate / object 任一含关键词 → 丢弃
+        const haystack = subject + '\n' + predicate + '\n' + objectValue;
+        if (HIDDEN_KEYWORDS.some(kw => haystack.includes(kw))) {
+            console.warn('[Horae][Fact] 命中黑名单，丢弃:', subject, predicate, objectValue);
+            continue;
+        }
+
         facts.push({
-            subject: parts[0],
-            predicate: parts[1],
-            object: parts.slice(2).join('|'),
+            subject,
+            predicate,
+            object: objectValue,
+            visibility,
             confidence: 'confirmed',
             source: 'factExtraction',
         });
