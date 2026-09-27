@@ -14,6 +14,7 @@ import { horaeManager, createEmptyMeta, getItemBaseName } from './core/horaeMana
 import { vectorManager } from './core/vectorManager.js';
 import { FactStore } from './core/memory/factStore.js';
 import { DirectorStore } from './core/memory/directorStore.js';
+import { sanitizeHiddenKeywords } from './core/memory/hiddenKeywords.js';
 import { calculateRelativeTime, calculateDetailedRelativeTime, formatRelativeTime, generateTimeReference, getCurrentSystemTime, formatStoryDate, formatFullDateTime, parseStoryDate } from './utils/timeUtils.js';
 import { t, tForLang, initI18n, getLanguage, isZhLocale, setLanguage, detectEffectiveAiLangIsZh, detectEffectiveAiLang } from './core/i18n.js';
 import { initPromptDefaults, ensurePromptDefaults, ensurePresetPrompts, getPromptDefaultSync, getPresetPromptsSync, BUILTIN_PRESET_IDS } from './core/promptDefaults.js';
@@ -21016,9 +21017,11 @@ async function onPromptReady(eventData) {
             currentUserInput
         );
         const timelineMode = settings.timelineInjectionMode === 'separate' ? 'separate' : 'inline';
-        const { mainPrompt: dataPrompt, timelinePrompt } = timelineMode === 'separate'
+        const _rawSplit = timelineMode === 'separate'
             ? _splitTimelineSection(rawDataPrompt)
             : { mainPrompt: rawDataPrompt, timelinePrompt: '' };
+        const dataPrompt = sanitizeHiddenKeywords(_rawSplit.mainPrompt);
+        const timelinePrompt = sanitizeHiddenKeywords(_rawSplit.timelinePrompt);
 
         let recallPrompt = '';
         if (skipVectorRecallOnce) {
@@ -21045,9 +21048,11 @@ async function onPromptReady(eventData) {
             }
         }
 
-        const stableRulesPrompt = horaeManager.generateStableSystemPrompt() +
+        const stableRulesPrompt = sanitizeHiddenKeywords(
+    horaeManager.generateStableSystemPrompt() +
     horaeManager.generateAntiParaphraseSystemPrompt() +
-    horaeManager.generateDirectorNotesPrompt();
+    horaeManager.generateDirectorNotesPrompt()
+);
 
         let antiParaRef = '';
         if (settings.antiParaphraseMode && chat?.length) {
@@ -21076,7 +21081,7 @@ const dynamicPrompt = recallPrompt
     ? `${dataPrompt}\n${recallPrompt}`
     : dataPrompt;
 
-const combinedPrompt = `${dynamicPrompt}${antiParaRef}`;
+const combinedPrompt = sanitizeHiddenKeywords(`${dynamicPrompt}${antiParaRef}`);
         const positionRaw = parseInt(settings.injectionPosition, 10);
         const position = Number.isNaN(positionRaw) ? 1 : Math.max(0, positionRaw);
         const depthSource = settings.injectionDepthSource === 'preset' ? 'preset' : 'system';
