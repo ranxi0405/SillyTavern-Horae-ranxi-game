@@ -16,6 +16,7 @@ import { FactStore } from './core/memory/factStore.js';
 import { DirectorStore } from './core/memory/directorStore.js';
 import { ThreadStore } from './core/memory/threadStore.js';
 import { sanitizeHiddenKeywords } from './core/memory/hiddenKeywords.js';
+import { validateIdentity, normalizeIdentity, emptyIdentity, isIdentityEmpty } from './core/memory/identityStore.js';
 import { calculateRelativeTime, calculateDetailedRelativeTime, formatRelativeTime, generateTimeReference, getCurrentSystemTime, formatStoryDate, formatFullDateTime, parseStoryDate } from './utils/timeUtils.js';
 import { t, tForLang, initI18n, getLanguage, isZhLocale, setLanguage, detectEffectiveAiLangIsZh, detectEffectiveAiLang } from './core/i18n.js';
 import { initPromptDefaults, ensurePromptDefaults, ensurePresetPrompts, getPromptDefaultSync, getPresetPromptsSync, BUILTIN_PRESET_IDS } from './core/promptDefaults.js';
@@ -15239,6 +15240,111 @@ function _hasSettingsDifferences(payload) {
 }
 
 // ── 角色卡 I/O ──
+// ── B3a: Identity I/O ──
+/** 读取角色卡 extensions.horae.identity（不写缓存） */
+function _readCardIdentity() {
+    const ctx = getContext();
+    const charId = ctx?.characterId;
+    if (charId == null) return { ok: false, reason: 'noCard' };
+
+    const char = ctx.characters?.[charId];
+    if (!char?.data || !char.avatar) return { ok: false, reason: 'noCard', charId };
+
+    const raw = char.data.extensions?.horae?.identity;
+    const v = validateIdentity(raw);
+    if (!v.ok) {
+        return { ok: false, reason: v.reason, charId, avatar: char.avatar, charName: char.name || '' };
+    }
+    return {
+        ok: true,
+        identity: v.identity,
+        charId,
+        avatar: char.avatar,
+        charName: char.name || char.data?.name || '',
+    };
+}
+
+/** 写入角色卡 extensions.horae.identity（B3c 编辑器使用） */
+async function _writeCardIdentity(identity) {
+    const ctx = getContext();
+    const charId = ctx?.characterId;
+    if (charId == null) return false;
+    const char = ctx.characters?.[charId];
+    if (!char?.data || !char.avatar) return false;
+
+    const normalized = normalizeIdentity(identity);
+    if (!char.data.extensions) char.data.extensions = {};
+    if (!char.data.extensions.horae) char.data.extensions.horae = {};
+    char.data.extensions.horae.identity = normalized;
+
+    try {
+        const resp = await fetch('/api/characters/merge-attributes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                avatar: char.avatar,
+                data: { extensions: { horae: { identity: normalized } } },
+            }),
+        });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        _cacheIdentityToChat(normalized);
+        return true;
+    } catch (err) {
+        console.warn('[Horae] 写入角色卡 identity 失败:', err);
+        return false;
+    }
+}
+
+/** 清空角色卡 extensions.horae.identity */
+async function _clearCardIdentity() {
+    const ctx = getContext();
+    const charId = ctx?.characterId;
+    if (charId == null) return false;
+    const char = ctx.characters?.[charId];
+    if (!char?.data?.extensions?.horae?.identity) {
+        _cacheIdentityToChat(null);
+        return false;
+    }
+
+    delete char.data.extensions.horae.identity;
+    try {
+        const resp = await fetch('/api/characters/merge-attributes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                avatar: char.avatar,
+                data: { extensions: { horae: { identity: null } } },
+            }),
+        });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        _cacheIdentityToChat(null);
+        return true;
+    } catch (err) {
+        console.warn('[Horae] 清除角色卡 identity 失败:', err);
+        return false;
+    }
+}
+
+/** 把 identity 写入 chat[0].horae_meta.identity（运行缓存） */
+function _cacheIdentityToChat(identity) {
+    const chat = horaeManager.getChat();
+    if (!chat?.[0]?.horae_meta) return;
+    chat[0].horae_meta.identity = identity || null;
+}
+
+/** 从角色卡读取 identity 并缓存。CHAT_CHANGED / 初始化时调用 */
+function _loadIdentityFromCard() {
+    const r = _readCardIdentity();
+    if (!r.ok) {
+        _cacheIdentityToChat(null);
+        console.log('[Horae][B3a] identity 读取失败:', r.reason);
+        return r;
+    }
+    _cacheIdentityToChat(r.identity);
+    console.log('[Horae][B3a] identity 已缓存:', r.identity);
+    return r;
+}
+
 function _readCardProfile() {
     const ctx = getContext();
     const charId = ctx?.characterId;
@@ -21778,6 +21884,7 @@ jQuery(async () => {
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, onMessageReceived);
     eventSource.on(event_types.CHAT_COMPLETION_PROMPT_READY, onPromptReady);
     eventSource.on(event_types.CHAT_CHANGED, onChatChanged);
+    eventSource.on(event_types.CHAT_CHANGED, () => { _loadIdentityFromCard(); });
     eventSource.on(event_types.MESSAGE_RENDERED, onMessageRendered);
     eventSource.on(event_types.MESSAGE_SWIPED, onSwipePanel);
     eventSource.on(event_types.MESSAGE_DELETED, onMessageDeleted);
@@ -21810,6 +21917,7 @@ jQuery(async () => {
 
     refreshAllDisplays();
     _snapshotCurrentChatMessageRefs();
+    _loadIdentityFromCard();
 
     if (settings.vectorEnabled) {
         setTimeout(() => _initVectorModel(), 1000);
