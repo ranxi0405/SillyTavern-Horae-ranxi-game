@@ -332,11 +332,6 @@ export class VectorManager {
         const rpgLines = [];
         const rpg = meta._rpgChanges;
         if (rpg) {
-            if (rpg.levels && Object.keys(rpg.levels).length > 0) {
-                for (const [owner, lv] of Object.entries(rpg.levels)) {
-                    rpgLines.push(`${owner} 等级${lv}`);
-                }
-            }
             for (const eq of (rpg.equipment || [])) {
                 rpgLines.push(`${eq.owner} 装备 ${eq.name}(${eq.slot})`);
             }

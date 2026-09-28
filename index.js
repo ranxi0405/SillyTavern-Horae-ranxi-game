@@ -214,8 +214,6 @@ const DEFAULT_SETTINGS = {
     rpgReputationUserOnly: false,   // 声望仅限主角
     sendRpgEquipment: false,        // 发送装备栏（可选）
     rpgEquipmentUserOnly: false,    // 装备仅限主角
-    sendRpgLevel: false,            // 发送等级/经验值
-    rpgLevelUserOnly: false,        // 等级仅限主角
     sendRpgCurrency: false,         // 发送货币系统
     rpgCurrencyUserOnly: false,     // 货币仅限主角
     rpgUserOnly: false,             // RPG全局仅限主角（总开关，联动所有子模块）
@@ -312,9 +310,9 @@ const _SETTINGS_EXPORT_KEYS = [
     'antiParaphraseMode', 'sideplayMode',
     'aiScanIncludeNpc', 'aiScanIncludeAffection', 'aiScanIncludeScene', 'aiScanIncludeRelationship',
     'rpgMode', 'sendRpgBars', 'sendRpgSkills', 'sendRpgAttributes', 'sendRpgReputation',
-    'sendRpgEquipment', 'sendRpgLevel', 'sendRpgCurrency', 'sendRpgStronghold', 'rpgDiceEnabled',
+    'sendRpgEquipment', 'sendRpgCurrency', 'sendRpgStronghold', 'rpgDiceEnabled',
     'rpgStrictPresentOnly', 'rpgBarsUserOnly', 'rpgSkillsUserOnly', 'rpgAttrsUserOnly', 'rpgReputationUserOnly',
-    'rpgEquipmentUserOnly', 'rpgLevelUserOnly', 'rpgCurrencyUserOnly', 'rpgUserOnly',
+    'rpgEquipmentUserOnly', 'rpgCurrencyUserOnly', 'rpgUserOnly',
     'rpgBarConfig', 'rpgAttributeConfig', 'rpgAttrViewMode', 'equipmentTemplates',
     'autoSummaryEnabled', 'autoSummaryKeepRecent', 'autoSummarySourceMode',
     'autoSummaryBufferMode', 'autoSummaryBufferMsgLimit', 'autoSummaryBufferTokenLimit',
@@ -4917,7 +4915,7 @@ function _cascadeDeleteNpcs(names) {
     const rpg = chat[0]?.horae_meta?.rpg;
     if (rpg) {
         for (const name of nameSet) {
-            for (const sub of ['bars', 'status', 'skills', 'attributes', 'reputation', 'levels', 'xp', 'currency']) {
+            for (const sub of ['bars', 'status', 'skills', 'attributes', 'reputation', 'currency']) {
                 if (rpg[sub]?.[name]) delete rpg[sub][name];
             }
             if (rpg.equipment?.[name]) delete rpg.equipment[name];
@@ -7498,10 +7496,9 @@ function _syncRpgTabVisibility() {
     const sendSkills = settings.rpgMode && settings.sendRpgSkills !== false;
     const sendRep = settings.rpgMode && !!settings.sendRpgReputation;
     const sendEq = settings.rpgMode && !!settings.sendRpgEquipment;
-    const sendLvl = settings.rpgMode && !!settings.sendRpgLevel;
     const sendCur = settings.rpgMode && !!settings.sendRpgCurrency;
     const sendSh = settings.rpgMode && !!settings.sendRpgStronghold;
-    const hasContent = sendBars || sendAttrs || sendSkills || sendRep || sendEq || sendLvl || sendCur || sendSh;
+    const hasContent = sendBars || sendAttrs || sendSkills || sendRep || sendEq || sendCur || sendSh;
     $('#horae-tab-btn-rpg').toggle(hasContent);
     $('#horae-rpg-bar-config-area').toggle(sendBars);
     $('#horae-rpg-attr-config-area').toggle(sendAttrs);
@@ -7509,7 +7506,6 @@ function _syncRpgTabVisibility() {
     $('.horae-rpg-skills-area').toggle(sendSkills);
     $('#horae-rpg-reputation-area').toggle(sendRep);
     $('#horae-rpg-equipment-area').toggle(sendEq);
-    $('#horae-rpg-level-area').toggle(sendLvl);
     $('#horae-rpg-currency-area').toggle(sendCur);
     $('#horae-rpg-stronghold-area').toggle(sendSh);
 }
@@ -7527,13 +7523,12 @@ function updateRpgDisplay() {
     const sendSkills = settings.sendRpgSkills !== false;
     const sendEq = !!settings.sendRpgEquipment;
     const sendRep = !!settings.sendRpgReputation;
-    const sendLvl = !!settings.sendRpgLevel;
     const sendCur = !!settings.sendRpgCurrency;
     const sendSh = !!settings.sendRpgStronghold;
     const attrCfg = settings.rpgAttributeConfig || [];
     const hasAttrModule = sendAttrs && attrCfg.length > 0;
     const detailModules = [hasAttrModule, sendSkills, sendEq, sendRep, sendCur, sendSh].filter(Boolean).length;
-    const moduleCount = [sendBars, hasAttrModule, sendSkills, sendEq, sendRep, sendLvl, sendCur, sendSh].filter(Boolean).length;
+    const moduleCount = [sendBars, hasAttrModule, sendSkills, sendEq, sendRep, sendCur, sendSh].filter(Boolean).length;
     const useCardLayout = detailModules >= 1 || moduleCount >= 2;
 
     // 配置区始终渲染
@@ -7548,7 +7543,6 @@ function updateRpgDisplay() {
         _bindEquipmentEvents();
     }
     if (sendCur) renderCurrencyConfig();
-    if (sendLvl) renderLevelValues();
     if (sendSh) { renderStrongholdTree(); _bindStrongholdEvents(); }
 
     const barsSection = document.getElementById('horae-rpg-bars-section');
@@ -7563,8 +7557,6 @@ function updateRpgDisplay() {
         ...Object.keys(rpg.attributes || {}),
         ...Object.keys(rpg.reputation || {}),
         ...Object.keys(rpg.equipment || {}),
-        ...Object.keys(rpg.levels || {}),
-        ...Object.keys(rpg.xp || {}),
         ...Object.keys(rpg.currency || {}),
     ]);
 
@@ -7607,84 +7599,20 @@ function updateRpgDisplay() {
 
     /** 渲染主角总览 HTML */
     function _buildOverviewHtml(name, rpg) {
-        const bars = rpg.bars?.[name] || {};
         const attrs = rpg.attributes?.[name] || {};
         const attrCfg = settings.rpgAttributeConfig || [];
 
         let html = '<div class="horae-rpg-overview">';
 
-        // ── 状态条（固定 hp / mp / sp，不遍历 barCfg）──
-        const OVERVIEW_BAR_KEYS = ['hp', 'mp', 'sp'];
-        let barsHtml = '';
-        for (const key of OVERVIEW_BAR_KEYS) {
-            const val = bars[key];
-            if (!Array.isArray(val) || val.length < 2) continue;
-            const label = getRpgBarName(key, val[2]);
-            barsHtml += `<div class="horae-rpg-overview-row"><span class="horae-rpg-overview-label">${escapeHtml(label)}</span><span class="horae-rpg-overview-val">${val[0]}/${val[1]}</span></div>`;
-        }
-        if (barsHtml) {
-            html += `<div class="horae-rpg-overview-section">${barsHtml}</div>`;
-        }
-
-        // ── 境界 / 修为 / 寿元（仅在 rpg.realm.name 存在时显示）──
+        // ── 修为（仅在 rpg.realm.name 存在时显示；其余信息由卡片 header 胶囊承担）──
         if (rpg.realm && typeof rpg.realm === 'object'
             && typeof rpg.realm.name === 'string' && rpg.realm.name.length > 0) {
-
-            const realmName = rpg.realm.name;
-            const realmPhase = rpg.realm.phase;
-            let realmHtml = '';
-
-            // 境界显示：X·Y 或 X（飞升 / 无 phase）
-            const realmDisplay = (realmName === '飞升' || !realmPhase)
-                ? realmName
-                : `${realmName}·${realmPhase}`;
-            realmHtml += `<div class="horae-rpg-overview-row"><span class="horae-rpg-overview-label">${t('ui.rpgOverviewRealm')}</span><span class="horae-rpg-overview-val">${escapeHtml(realmDisplay)}</span></div>`;
-
-            // 修为：cur / max
             if (Array.isArray(rpg.cultivation) && rpg.cultivation.length >= 2) {
                 const cur = rpg.cultivation[0];
                 const max = rpg.cultivation[1];
                 if (Number.isSafeInteger(cur) && Number.isSafeInteger(max)) {
-                    realmHtml += `<div class="horae-rpg-overview-row"><span class="horae-rpg-overview-label">${t('ui.rpgOverviewCultivation')}</span><span class="horae-rpg-overview-val">${cur}/${max}</span></div>`;
+                    html += `<div class="horae-rpg-overview-section"><div class="horae-rpg-overview-row"><span class="horae-rpg-overview-label">${t('ui.rpgOverviewCultivation')}</span><span class="horae-rpg-overview-val">${cur}/${max}</span></div></div>`;
                 }
-            }
-
-            // 寿元 / 年龄
-            const age = rpg.age;
-            const lifespan = rpg.lifespan;
-            const hasAge = typeof age === 'number' && Number.isSafeInteger(age) && age >= 0;
-            const hasLifespan = typeof lifespan === 'number' && Number.isSafeInteger(lifespan) && lifespan >= 0;
-            if (hasAge && hasLifespan) {
-                realmHtml += `<div class="horae-rpg-overview-row"><span class="horae-rpg-overview-label">${t('ui.rpgOverviewLifespan')}</span><span class="horae-rpg-overview-val">${age}/${lifespan}</span></div>`;
-            } else if (hasAge) {
-                realmHtml += `<div class="horae-rpg-overview-row"><span class="horae-rpg-overview-label">${t('ui.rpgOverviewAge')}</span><span class="horae-rpg-overview-val">${age}</span></div>`;
-            } else if (hasLifespan) {
-                realmHtml += `<div class="horae-rpg-overview-row"><span class="horae-rpg-overview-label">${t('ui.rpgOverviewLifespanMax')}</span><span class="horae-rpg-overview-val">${lifespan}</span></div>`;
-            }
-
-            if (realmHtml) {
-                html += `<div class="horae-rpg-overview-section">${realmHtml}</div>`;
-            }
-        }
-
-        // ── 神识（独立于神念，仅在 rpg.spirit 有效时显示）──
-        const spirit = rpg.spirit;
-        if (spirit && typeof spirit === 'object') {
-            const tierRaw = spirit.tier;
-            const xpRaw = spirit.xp;
-            const hasTier = typeof tierRaw === 'string' && tierRaw.length > 0;
-            const hasXp = typeof xpRaw === 'number' && Number.isSafeInteger(xpRaw) && xpRaw >= 0;
-
-            if (hasTier || hasXp) {
-                let valStr;
-                if (hasTier && hasXp) {
-                    valStr = `${tierRaw} · ${t('ui.rpgOverviewSpiritXp')} ${xpRaw}`;
-                } else if (hasTier) {
-                    valStr = tierRaw;
-                } else {
-                    valStr = `${t('ui.rpgOverviewSpiritXp')} ${xpRaw}`;
-                }
-                html += `<div class="horae-rpg-overview-section"><div class="horae-rpg-overview-row"><span class="horae-rpg-overview-label">${t('ui.rpgOverviewSpirit')}</span><span class="horae-rpg-overview-val">${escapeHtml(valStr)}</span></div></div>`;
             }
         }
 
@@ -7708,6 +7636,15 @@ function updateRpgDisplay() {
      *  UI 精确查找，再通过 i18n 映射到当前语言 label。
      *  rpg.arts 里的额外 key 原样追加显示，不做模糊匹配。
      */
+    const _ART_GRADE_RANGES = [
+        { min: 0, max: 19 },
+        { min: 20, max: 99 },
+        { min: 100, max: 499 },
+        { min: 500, max: 2999 },
+        { min: 3000, max: 7999 },
+        { min: 8000, max: 29999 },
+        { min: 30000, max: Infinity },
+    ];
     function _buildArtsHtml(name, rpg) {
         const artsMap = rpg.arts?.[name] || {};
         const untrained = t('ui.rpgArtsUntrained');
@@ -7726,8 +7663,21 @@ function updateRpgDisplay() {
             if (!data) return untrained;
             const parts = [];
             if (data.tier) parts.push(data.tier);
-            if (typeof data.xp === 'number') parts.push(`${xpLabel} ${data.xp}`);
-            return parts.length > 0 ? parts.join(' · ') : untrained;
+            if (typeof data.xp === 'number') {
+                let seg = null;
+                for (let gi = 0; gi < _ART_GRADE_RANGES.length; gi++) {
+                    const g = _ART_GRADE_RANGES[gi];
+                    if (data.xp >= g.min && data.xp <= g.max) { seg = g; break; }
+                }
+                if (seg && seg.max === Infinity) {
+                    parts.push('（' + data.xp + '+）');
+                } else if (seg) {
+                    parts.push('（' + data.xp + '/' + seg.max + '）');
+                } else {
+                    parts.push(`${xpLabel} ${data.xp}`);
+                }
+            }
+            return parts.length > 0 ? parts.join('') : untrained;
         };
 
         let html = '<div class="horae-rpg-arts">';
@@ -7775,8 +7725,6 @@ function updateRpgDisplay() {
         const charEq = rpg.equipment?.[name] || {};
         const charRep = rpg.reputation?.[name] || {};
         const charCur = rpg.currency?.[name] || {};
-        const charLv = rpg.levels?.[name];
-        const charXp = rpg.xp?.[name];
 
         if (_isU) {
             tabs.push({ id: `overview_${eid}`, label: t('ui.rpgTabOverview') });
@@ -7966,7 +7914,6 @@ function updateRpgDisplay() {
             const npc = state.npcs[name];
             const profession = npc?.personality?.split(/[,，]/)?.[0]?.trim() || '';
             const isPresent = inScene.includes(name);
-            const charLv = rpg.levels?.[name];
 
             if (!isPresent) continue;
             const _isUser = (name === userName);
@@ -7977,7 +7924,7 @@ function updateRpgDisplay() {
                 // 角色名行: 名称 + 等级 + 状态图标 ...... 货币（右端）
                 barsHtml += '<div class="horae-rpg-bar-card-header">';
                 barsHtml += `<span class="horae-rpg-char-name">${escapeHtml(name)}</span>`;
-                if (sendLvl && charLv != null && (!settings.rpgLevelUserOnly || _isUser)) barsHtml += `<span class="horae-rpg-lv-badge">Lv.${charLv}</span>`;
+                barsHtml += _buildCapsulesHtml(rpg);
                 for (const e of effects) {
                     barsHtml += `<i class="fa-solid ${getStatusIcon(e)} horae-rpg-hud-effect" title="${escapeHtml(e)}"></i>`;
                 }
@@ -7992,12 +7939,6 @@ function updateRpgDisplay() {
                 }
                 if (curRightHtml) barsHtml += `<span class="horae-rpg-bar-card-right">${curRightHtml}</span>`;
                 barsHtml += '</div>';
-                // XP 条
-                const charXpTop = rpg.xp?.[name];
-                if (sendLvl && (!settings.rpgLevelUserOnly || _isUser) && charXpTop && charXpTop[1] > 0) {
-                    const xpPct = Math.min(100, Math.round(charXpTop[0] / charXpTop[1] * 100));
-                    barsHtml += `<div class="horae-rpg-bar"><span class="horae-rpg-bar-label">XP</span><div class="horae-rpg-bar-track"><div class="horae-rpg-bar-fill" style="width:${xpPct}%;background:#a78bfa;"></div></div><span class="horae-rpg-bar-val">${charXpTop[0]}/${charXpTop[1]}</span></div>`;
-                }
                 if (bars) {
                     for (const [type, val] of Object.entries(bars)) {
                         const label = getRpgBarName(type, val[2]);
@@ -8018,7 +7959,6 @@ function updateRpgDisplay() {
             const tabContent = _buildCharTabs(name);
             if (tabContent) {
                 barsHtml += `<details class="horae-rpg-char-detail"><summary class="horae-rpg-char-summary"><span class="horae-rpg-char-detail-name">${escapeHtml(name)}</span>`;
-                if (sendLvl && (!settings.rpgLevelUserOnly || _isUser) && rpg.levels?.[name] != null) barsHtml += `<span class="horae-rpg-lv-badge">Lv.${rpg.levels[name]}</span>`;
                 if (profession) barsHtml += `<span class="horae-rpg-char-prof">${escapeHtml(profession)}</span>`;
                 barsHtml += `</summary><div class="horae-rpg-char-detail-body">${tabContent}</div></details>`;
             }
@@ -9513,82 +9453,8 @@ function _bindStrongholdEvents() {
     });
 }
 
-/** 渲染等级/经验值数据（配置面板） */
-function renderLevelValues() {
-    const section = document.getElementById('horae-rpg-level-values-section');
-    if (!section) return;
-    const snapshot = horaeManager.getRpgStateAt(0);
-    const chat = horaeManager.getChat();
-    const baseRpg = chat?.[0]?.horae_meta?.rpg || {};
-    const mergedLevels = { ...(snapshot.levels || {}), ...(baseRpg.levels || {}) };
-    const mergedXp = { ...(snapshot.xp || {}), ...(baseRpg.xp || {}) };
-    const allNames = new Set([...Object.keys(mergedLevels), ...Object.keys(mergedXp), ...Object.keys(snapshot.bars || {})]);
-    const _lvUO = !!settings.rpgLevelUserOnly;
-    const _lvUserName = getContext().name1 || '';
-    let html = `<div style="display:flex;justify-content:flex-end;margin-bottom:6px;"><button class="horae-rpg-btn-sm horae-rpg-lv-add" title="${t('ui.addLevelCharTitle')}"><i class="fa-solid fa-plus"></i> ${t('ui.addLevelChar')}</button></div>`;
-    if (!allNames.size) {
-        html += `<div class="horae-rpg-skills-empty">${t('ui.noLevelData')}</div>`;
-    }
-    for (const name of allNames) {
-        if (_lvUO && name !== _lvUserName) continue;
-        const lv = mergedLevels[name];
-        const xp = mergedXp[name];
-        const xpCur = xp ? xp[0] : 0;
-        const xpMax = xp ? xp[1] : 0;
-        const pct = xpMax > 0 ? Math.min(100, Math.round(xpCur / xpMax * 100)) : 0;
-        html += `<div class="horae-rpg-lv-entry" data-char="${escapeHtml(name)}">`;
-        html += `<div class="horae-rpg-lv-entry-header">`;
-        html += `<span class="horae-rpg-lv-entry-name">${escapeHtml(name)}</span>`;
-        html += `<span class="horae-rpg-hud-lv-badge">${lv != null ? 'Lv.' + lv : '--'}</span>`;
-        html += `<button class="horae-rpg-btn-sm horae-rpg-lv-edit" data-char="${escapeHtml(name)}" title="${t('tooltip.editLevelXp')}"><i class="fa-solid fa-pen-to-square"></i></button>`;
-        html += `</div>`;
-        if (xpMax > 0) {
-            html += `<div class="horae-rpg-lv-xp-row"><div class="horae-rpg-bar-track"><div class="horae-rpg-bar-fill" style="width:${pct}%;background:#a78bfa;"></div></div><span class="horae-rpg-lv-xp-label">${xpCur}/${xpMax} (${pct}%)</span></div>`;
-        }
-        html += '</div>';
-    }
-    section.innerHTML = html;
 
-    const _lvEditHandler = (charName) => {
-        const chat2 = horaeManager.getChat();
-        if (!chat2?.length) return;
-        if (!chat2[0].horae_meta) chat2[0].horae_meta = createEmptyMeta();
-        if (!chat2[0].horae_meta.rpg) chat2[0].horae_meta.rpg = {};
-        const rpgData = chat2[0].horae_meta.rpg;
-        const curLv = rpgData.levels?.[charName] ?? '';
-        const newLv = prompt(t('toast.levelPrompt', { name: charName }), curLv);
-        if (newLv === null) return;
-        const lvVal = parseInt(newLv);
-        if (isNaN(lvVal) || lvVal < 0) { showToast(t('toast.invalidLevelNumber'), 'warning'); return; }
-        if (!rpgData.levels) rpgData.levels = {};
-        if (!rpgData.xp) rpgData.xp = {};
-        rpgData.levels[charName] = lvVal;
-        const xpMax = Math.max(100, lvVal * 100);
-        const curXp = rpgData.xp[charName];
-        if (!curXp || curXp[1] <= 0) {
-            rpgData.xp[charName] = [0, xpMax];
-        } else {
-            rpgData.xp[charName] = [curXp[0], xpMax];
-        }
-        getContext().saveChat();
-        renderLevelValues();
-        updateAllRpgHuds();
-        showToast(t('toast.levelSet', { name: charName, level: lvVal, xp: xpMax }), 'success');
-    };
-
-    section.querySelectorAll('.horae-rpg-lv-edit').forEach(btn => {
-        btn.addEventListener('click', () => _lvEditHandler(btn.dataset.char));
-    });
-
-    const addBtn = section.querySelector('.horae-rpg-lv-add');
-    if (addBtn) {
-        addBtn.addEventListener('click', () => {
-            const charName = prompt(t('label.npcName') + ':');
-            if (!charName?.trim()) return;
-            _lvEditHandler(charName.trim());
-        });
-    }
-}
+/** 写入本楼 _rpgChanges 并刷新；不会改基线或其他楼的数据 */
 
 /** 写入本楼 _rpgChanges 并刷新；不会改基线或其他楼的数据 */
 function commitRpgEdit(messageIndex, charName, fieldType, payload) {
@@ -9610,16 +9476,6 @@ function commitRpgEdit(messageIndex, charName, fieldType, payload) {
         case 'status': {
             if (!ch.status) ch.status = {};
             ch.status[charName] = [...(payload.effects || [])];
-            break;
-        }
-        case 'level': {
-            if (!ch.levels) ch.levels = {};
-            ch.levels[charName] = payload.value;
-            break;
-        }
-        case 'xp': {
-            if (!ch.xp) ch.xp = {};
-            ch.xp[charName] = [payload.cur, payload.max];
             break;
         }
         default: return false;
@@ -9725,13 +9581,6 @@ function _ensureRpgHudEventsBound() {
             const cur = kind === 'bar-cur' ? num : (bar[0] || 0);
             const max = Math.max(1, kind === 'bar-max' ? num : (bar[1] || 100));
             commitRpgEdit(mesId, char, 'bar', { key, cur: Math.max(0, Math.min(cur, max)), max, desc: bar[2] || '' });
-        } else if (kind === 'level') {
-            commitRpgEdit(mesId, char, 'level', { value: num });
-        } else if (kind === 'xp-cur' || kind === 'xp-max') {
-            const xp = snap?.xp?.[char] || [0, 100];
-            const cur = kind === 'xp-cur' ? num : (xp[0] || 0);
-            const max = Math.max(1, kind === 'xp-max' ? num : (xp[1] || 100));
-            commitRpgEdit(mesId, char, 'xp', { cur: Math.max(0, Math.min(cur, max)), max });
         }
     });
 
@@ -9811,14 +9660,83 @@ function _renderEditableVal(cur, max, kindCur, kindMax, key) {
  * 布局: 角色名(+Lv+极简状态徽章+货币) | XP条 | 属性条 | 详情chip(仅 .expanded 时显示)
  * 编辑入口：所有数值文本旁同时渲染 input（默认 hidden，由 .horae-rpg-hud.editing 接管）
  */
+const _HUD_REALM_BASE_CULTIVATION = {
+    '炼气': 1000, '筑基': 2000, '结晶': 4000, '金丹': 8000, '具灵': 16000,
+    '元婴': 32000, '化神': 64000, '悟道': 128000, '羽化': 256000, '登仙': 512000,
+    '飞升': Infinity,
+};
+
+function _buildCapsulesHtml(rpg) {
+    if (!rpg.realm || typeof rpg.realm !== 'object' || typeof rpg.realm.name !== 'string' || rpg.realm.name.length === 0) {
+        return '';
+    }
+    const _tags = [];
+    if (typeof rpg.age === 'number' && typeof rpg.lifespan === 'number') {
+        _tags.push('<span class="horae-rpg-hud-tag">' + escapeHtml(t('ui.rpgHudAge')) + rpg.age + '/' + rpg.lifespan + '</span>');
+    }
+    const _rn = rpg.realm.name;
+    if (_rn === '飞升') {
+        _tags.push('<span class="horae-rpg-hud-tag">' + escapeHtml(_rn) + '</span>');
+    } else if (Array.isArray(rpg.cultivation) && rpg.cultivation.length >= 2) {
+        const _cur = rpg.cultivation[0];
+        const _seg = _calcCultivationSegmentHud(_cur, _rn);
+        if (_seg && _seg.phase) {
+            const _segStr = (_seg.segMax === Infinity)
+                ? '（' + _seg.segCur + '）'
+                : '（' + _seg.segCur + '/' + _seg.segMax + '）';
+            _tags.push('<span class="horae-rpg-hud-tag">' + escapeHtml(_rn + '·' + _seg.phase) + _segStr + '</span>');
+        } else {
+            _tags.push('<span class="horae-rpg-hud-tag">' + escapeHtml(_rn) + '</span>');
+        }
+    } else {
+        _tags.push('<span class="horae-rpg-hud-tag">' + escapeHtml(_rn) + '</span>');
+    }
+    const _sp = rpg.spirit;
+    if (_sp && typeof _sp === 'object' && typeof _sp.tier === 'string' && _sp.tier.length > 0) {
+        const _spLabel = t('ui.rpgOverviewSpirit');
+        const _spTh = { '蒙昧': 1000, '清明': 3000, '凝照': 6000, '洞玄': 10000, '明心': 15000, '太虚': Infinity }[_sp.tier];
+        if (_sp.tier === '太虚' && typeof _sp.xp === 'number') {
+            _tags.push('<span class="horae-rpg-hud-tag">' + escapeHtml(_spLabel) + '·' + escapeHtml(_sp.tier) + '（' + _sp.xp + '）</span>');
+        } else if (typeof _sp.xp === 'number' && typeof _spTh === 'number') {
+            _tags.push('<span class="horae-rpg-hud-tag">' + escapeHtml(_spLabel) + '·' + escapeHtml(_sp.tier) + '（' + _sp.xp + '/' + _spTh + '）</span>');
+        } else if (typeof _sp.xp === 'number') {
+            _tags.push('<span class="horae-rpg-hud-tag">' + escapeHtml(_spLabel) + '·' + escapeHtml(_sp.tier) + '（' + _sp.xp + '）</span>');
+        } else {
+            _tags.push('<span class="horae-rpg-hud-tag">' + escapeHtml(_spLabel) + '·' + escapeHtml(_sp.tier) + '</span>');
+        }
+    }
+    return _tags.length > 0 ? '<span class="horae-rpg-hud-tags">' + _tags.join('') + '</span>' : '';
+}
+
+function _calcCultivationSegmentHud(cur, realmName) {
+    if (!realmName || !(realmName in _HUD_REALM_BASE_CULTIVATION)) return null;
+    const max = _HUD_REALM_BASE_CULTIVATION[realmName];
+    if (max === Infinity || realmName === '飞升') {
+        return { phase: null, segCur: cur, segMax: Infinity };
+    }
+    const curSafe = Math.max(0, cur);
+    const r = curSafe / max;
+    if (r < 0.15) {
+        return { phase: '初期', segCur: Math.round(curSafe), segMax: Math.round(0.15 * max) };
+    }
+    if (r < 0.35) {
+        return { phase: '中期', segCur: Math.round(curSafe - 0.15 * max), segMax: Math.round(0.20 * max) };
+    }
+    if (r < 0.60) {
+        return { phase: '后期', segCur: Math.round(curSafe - 0.35 * max), segMax: Math.round(0.25 * max) };
+    }
+    if (realmName === '登仙') {
+        return { phase: '圆满', segCur: Math.round(curSafe - 0.60 * max), segMax: Infinity };
+    }
+    const curClamped = Math.min(curSafe, max);
+    return { phase: '圆满', segCur: Math.round(curClamped - 0.60 * max), segMax: Math.round(0.40 * max) };
+}
+
 function _buildCharHudHtml(name, rpg) {
     const bars = rpg.bars[name] || {};
     const effects = rpg.status?.[name] || [];
-    const charLv = rpg.levels?.[name];
-    const charXp = rpg.xp?.[name];
     const charCur = rpg.currency?.[name] || {};
     const denomCfg = rpg.currencyConfig?.denominations || [];
-    const sendLvl = !!settings.sendRpgLevel;
     const sendCur = !!settings.sendRpgCurrency;
 
     const dedupedEffects = dedupeStatusForHud(effects);
@@ -9829,12 +9747,7 @@ function _buildCharHudHtml(name, rpg) {
 
     html += '<div class="horae-rpg-hud-header">';
     html += `<span class="horae-rpg-hud-name">${escapeHtml(name)}</span>`;
-    if (sendLvl && charLv != null) {
-        html += `<span class="horae-rpg-hud-lv-badge">`
-            + `<span class="horae-rpg-hud-lv-display">Lv.${charLv}</span>`
-            + `<input class="horae-rpg-hud-edit-input horae-rpg-hud-lv-input" type="number" inputmode="numeric" min="0" data-edit-kind="level" value="${charLv}">`
-            + `</span>`;
-    }
+    html += _buildCapsulesHtml(rpg);
     if (mostSevere) {
         const summaryTitle = effectCount > 1
             ? `${mostSevere.text} +${effectCount - 1}`
@@ -9854,15 +9767,6 @@ function _buildCharHudHtml(name, rpg) {
         if (curHtml) html += `<span class="horae-rpg-hud-right">${curHtml}</span>`;
     }
     html += '</div>';
-
-    if (sendLvl && charXp && charXp[1] > 0) {
-        const pct = Math.min(100, Math.round(charXp[0] / charXp[1] * 100));
-        html += `<div class="horae-rpg-hud-bar horae-rpg-hud-xp">`
-            + `<span class="horae-rpg-hud-lbl">XP</span>`
-            + `<div class="horae-rpg-hud-track"><div class="horae-rpg-hud-fill" style="width:${pct}%;background:#a78bfa;"></div></div>`
-            + _renderEditableVal(charXp[0], charXp[1], 'xp-cur', 'xp-max', '')
-            + `</div>`;
-    }
 
     for (const [type, val] of Object.entries(bars)) {
         const label = getRpgBarName(type, val[2]);
@@ -9910,7 +9814,6 @@ function _matchPresentChars(present, rpg) {
         ...Object.keys(rpg.bars || {}), ...Object.keys(rpg.status || {}),
         ...Object.keys(rpg.skills || {}), ...Object.keys(rpg.attributes || {}),
         ...Object.keys(rpg.reputation || {}), ...Object.keys(rpg.equipment || {}),
-        ...Object.keys(rpg.levels || {}), ...Object.keys(rpg.xp || {}),
         ...Object.keys(rpg.currency || {}),
     ]);
     const chars = [];
@@ -9985,8 +9888,6 @@ function _buildRpgSnapshotMap(chat) {
     const baseRpg = chat[0]?.horae_meta?.rpg || {};
     const acc = {
         bars: {}, status: {}, skills: {}, attributes: {},
-        levels: { ...(baseRpg.levels || {}) },
-        xp: { ...(baseRpg.xp || {}) },
         currency: {},
     };
     const resolve = (raw) => horaeManager._resolveRpgOwner(raw);
@@ -10030,12 +9931,6 @@ function _buildRpgSnapshotMap(chat) {
             for (const [raw, vals] of Object.entries(changes.attributes || {})) {
                 const o = resolve(raw);
                 acc.attributes[o] = { ...(acc.attributes[o] || {}), ...vals };
-            }
-            for (const [raw, val] of Object.entries(changes.levels || {})) {
-                acc.levels[resolve(raw)] = val;
-            }
-            for (const [raw, val] of Object.entries(changes.xp || {})) {
-                acc.xp[resolve(raw)] = val;
             }
             for (const c of (changes.currency || [])) {
                 const o = resolve(c.owner);
@@ -13049,10 +12944,6 @@ function _buildRpgLinePatchForEdit(charName, fieldType, payload) {
             const val = arr.length ? arr.join('/') : '正常';
             return { type: 'status', owner: charName, newLine: `status:${charName}=${val}` };
         }
-        case 'level':
-            return { type: 'level', owner: charName, newLine: `level:${charName}=${payload.value}` };
-        case 'xp':
-            return { type: 'xp', owner: charName, newLine: `xp:${charName}=${payload.cur}/${payload.max}` };
         default:
             return null;
     }
@@ -13478,7 +13369,7 @@ function initSettingsEvents() {
         const validNames = new Set(Object.keys(stateNpcs));
         if (userName) validNames.add(userName);
 
-        const RPG_BUCKETS = ['bars', 'status', 'skills', 'attributes', 'reputation', 'equipment', 'levels', 'xp', 'currency'];
+        const RPG_BUCKETS = ['bars', 'status', 'skills', 'attributes', 'reputation', 'equipment', 'currency'];
         const owners = new Set();
         for (const sub of RPG_BUCKETS) {
             for (const name of Object.keys(rpg[sub] || {})) owners.add(name);
@@ -14327,8 +14218,8 @@ function initSettingsEvents() {
         if (this.checked) updateRpgDisplay();
     });
     // RPG 仅限主角 - 总开关联动所有子模块
-    const _rpgUoKeys = ['rpgBarsUserOnly', 'rpgSkillsUserOnly', 'rpgAttrsUserOnly', 'rpgReputationUserOnly', 'rpgEquipmentUserOnly', 'rpgLevelUserOnly', 'rpgCurrencyUserOnly'];
-    const _rpgUoIds = ['bars', 'skills', 'attrs', 'reputation', 'equipment', 'level', 'currency'];
+    const _rpgUoKeys = ['rpgBarsUserOnly', 'rpgSkillsUserOnly', 'rpgAttrsUserOnly', 'rpgReputationUserOnly', 'rpgEquipmentUserOnly', 'rpgCurrencyUserOnly'];
+    const _rpgUoIds = ['bars', 'skills', 'attrs', 'reputation', 'equipment', 'currency'];
     function _syncRpgUserOnlyMaster() {
         const allOn = _rpgUoKeys.every(k => !!settings[k]);
         settings.rpgUserOnly = allOn;
@@ -14367,7 +14258,6 @@ function initSettingsEvents() {
         { checkId: 'horae-setting-rpg-attrs', settingKey: 'sendRpgAttributes', uoId: 'horae-setting-rpg-attrs-uo' },
         { checkId: 'horae-setting-rpg-reputation', settingKey: 'sendRpgReputation', uoId: 'horae-setting-rpg-reputation-uo' },
         { checkId: 'horae-setting-rpg-equipment', settingKey: 'sendRpgEquipment', uoId: 'horae-setting-rpg-equipment-uo' },
-        { checkId: 'horae-setting-rpg-level', settingKey: 'sendRpgLevel', uoId: 'horae-setting-rpg-level-uo' },
         { checkId: 'horae-setting-rpg-currency', settingKey: 'sendRpgCurrency', uoId: 'horae-setting-rpg-currency-uo' },
     ];
     for (const m of _rpgModulePairs) {
@@ -16106,9 +15996,6 @@ function syncSettingsToUI() {
     $('#horae-setting-rpg-equipment').prop('checked', !!settings.sendRpgEquipment);
     $('#horae-setting-rpg-equipment-uo').prop('checked', !!settings.rpgEquipmentUserOnly);
     $('#horae-setting-rpg-equipment-uo').closest('label').toggle(!!settings.sendRpgEquipment);
-    $('#horae-setting-rpg-level').prop('checked', !!settings.sendRpgLevel);
-    $('#horae-setting-rpg-level-uo').prop('checked', !!settings.rpgLevelUserOnly);
-    $('#horae-setting-rpg-level-uo').closest('label').toggle(!!settings.sendRpgLevel);
     $('#horae-setting-rpg-currency').prop('checked', !!settings.sendRpgCurrency);
     $('#horae-setting-rpg-currency-uo').prop('checked', !!settings.rpgCurrencyUserOnly);
     $('#horae-setting-rpg-currency-uo').closest('label').toggle(!!settings.sendRpgCurrency);
@@ -20264,7 +20151,7 @@ function _importAsInitialState(importObj, chat, options = {}) {
     for (const meta of allMetas) {
         if (meta.rpg) {
             if (!target.rpg) target.rpg = {};
-            for (const sub of ['bars', 'status', 'skills', 'attributes', 'reputation', 'levels', 'xp', 'currency', 'equipment']) {
+            for (const sub of ['bars', 'status', 'skills', 'attributes', 'reputation', 'currency', 'equipment']) {
                 if (meta.rpg[sub]) {
                     if (!target.rpg[sub]) target.rpg[sub] = {};
                     Object.assign(target.rpg[sub], meta.rpg[sub]);

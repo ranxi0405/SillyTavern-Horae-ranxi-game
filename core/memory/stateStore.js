@@ -12,14 +12,243 @@
  *   - 不修改 _mergeRpgData / rebuildRpgData（下一轮）
  */
 
+// ⚠ 数值权威来自 Worldbook「〖核心数据〗修仙境界与寿元」/「〖核心数据〗神识与神念」
+// 修改世界书后必须同步此表
+export const REALM_BASE_HP = {
+    '炼气': 100, '筑基': 300, '结晶': 600, '金丹': 1200, '具灵': 2000,
+    '元婴': 3500, '化神': 6000, '悟道': 10000, '羽化': 18000, '登仙': 30000,
+    '飞升': Infinity,
+};
+export const REALM_BASE_MP = {
+    '炼气': 100, '筑基': 300, '结晶': 600, '金丹': 1200, '具灵': 2000,
+    '元婴': 3500, '化神': 6000, '悟道': 10000, '羽化': 18000, '登仙': 30000,
+    '飞升': Infinity,
+};
+export const SPIRIT_BASE_SP = {
+    '蒙昧': 100, '清明': 250, '凝照': 600, '洞玄': 1500, '明心': 3500, '太虚': 8000,
+};
+export const SPIRIT_THRESHOLD = {
+    '蒙昧': 1000, '清明': 3000, '凝照': 6000, '洞玄': 10000, '明心': 15000, '太虚': Infinity,
+};
+export const SPIRIT_ORDER = ['蒙昧', '清明', '凝照', '洞玄', '明心', '太虚'];
+
+export const REALM_BASE_CULTIVATION = {
+    '炼气': 1000, '筑基': 2000, '结晶': 4000, '金丹': 8000, '具灵': 16000,
+    '元婴': 32000, '化神': 64000, '悟道': 128000, '羽化': 256000, '登仙': 512000,
+    '飞升': Infinity,
+};
+
+function deriveCultivationMax(realmName) {
+    if (!realmName || !(realmName in REALM_BASE_CULTIVATION)) return null;
+    return REALM_BASE_CULTIVATION[realmName];
+}
+
+function calcCultivationSegment(cur, realmName) {
+    if (!realmName || !(realmName in REALM_BASE_CULTIVATION)) return null;
+    const max = REALM_BASE_CULTIVATION[realmName];
+    if (max === Infinity || realmName === '飞升') {
+        return { phase: null, segCur: cur, segMax: Infinity };
+    }
+    const curSafe = Math.max(0, cur);
+    const r = curSafe / max;
+    if (r < 0.15) {
+        return { phase: '初期', segCur: Math.round(curSafe), segMax: Math.round(0.15 * max) };
+    }
+    if (r < 0.35) {
+        return { phase: '中期', segCur: Math.round(curSafe - 0.15 * max), segMax: Math.round(0.20 * max) };
+    }
+    if (r < 0.60) {
+        return { phase: '后期', segCur: Math.round(curSafe - 0.35 * max), segMax: Math.round(0.25 * max) };
+    }
+    // 圆满段
+    if (realmName === '登仙') {
+        return { phase: '圆满', segCur: Math.round(curSafe - 0.60 * max), segMax: Infinity };
+    }
+    const curClamped = Math.min(curSafe, max);
+    return { phase: '圆满', segCur: Math.round(curClamped - 0.60 * max), segMax: Math.round(0.40 * max) };
+}
+
+export { deriveCultivationMax, calcCultivationSegment };
+
 const EMPTY_SNAPSHOT = () => ({
     bars: {}, status: {}, skills: {}, attributes: {},
-    reputation: {}, equipment: {}, levels: {}, xp: {},
+    reputation: {}, equipment: {},
     currency: {}, strongholds: [],
     spirit: null,
     arts: {}, shenTong: {},
     realm: null, cultivation: null, age: null, lifespan: null,
+    barBonuses: {},
 });
+
+// ── 数值派生辅助函数 ──
+
+function _deriveMaxFor(state, owner, type, cur) {
+    const bonus = (state.barBonuses?.[owner]?.[type]) || 0;
+    let derived = null;
+    if (type === 'hp') {
+        const name = state.realm?.name;
+        if (!name || !(name in REALM_BASE_HP)) return null;
+        const base = REALM_BASE_HP[name];
+        derived = base === Infinity ? Infinity : base + bonus;
+    } else if (type === 'mp') {
+        const name = state.realm?.name;
+        if (!name || !(name in REALM_BASE_MP)) return null;
+        const base = REALM_BASE_MP[name];
+        derived = base === Infinity ? Infinity : base + bonus;
+    } else if (type === 'sp') {
+        const tier = state.spirit?.tier;
+        if (!tier || !(tier in SPIRIT_BASE_SP)) return null;
+        const base = SPIRIT_BASE_SP[tier];
+        if (base === Infinity) return Infinity;
+        const xp = state.spirit?.xp || 0;
+        derived = base + Math.floor(xp / 100) + bonus;
+    } else {
+        return null;
+    }
+    if (derived === null) return null;
+    if (derived === Infinity) return Infinity;
+    // 兜底：避免 cur > max 出现 280/100 之类的非法显示
+    if (typeof cur === 'number' && Number.isFinite(cur) && cur > derived) return cur;
+    return derived;
+}
+
+function _barsNeedMaxInit(state) {
+    if (!state.bars) return false;
+    for (const bars of Object.values(state.bars)) {
+        if (!bars || typeof bars !== 'object') continue;
+        for (const val of Object.values(bars)) {
+            if (!Array.isArray(val) || val.length < 2) return true;
+            if (val[1] === null || val[1] === undefined) return true;
+        }
+    }
+    return false;
+}
+
+function _deriveAllBarsMax(state) {
+    if (!state.bars) return;
+    for (const [owner, bars] of Object.entries(state.bars)) {
+        if (!bars || typeof bars !== 'object') continue;
+        for (const [type, val] of Object.entries(bars)) {
+            if (!Array.isArray(val) || val.length < 1) continue;
+            const newMax = _deriveMaxFor(state, owner, type, val[0]);
+            if (newMax === null) continue;
+            const cur = val[0];
+            const label = val[2];
+            if (label !== undefined && label !== null && label !== '') {
+                bars[type] = [cur, newMax, label];
+            } else {
+                bars[type] = [cur, newMax];
+            }
+        }
+    }
+}
+
+function _applySpiritChange(state, changes) {
+    if (!changes || typeof changes !== 'object') return false;
+    const hasTier = typeof changes.tier === 'string';
+    const hasXp = typeof changes.xp === 'number';
+    if (!hasTier && !hasXp) return false;
+
+    if (hasXp) {
+        if (!Number.isSafeInteger(changes.xp) || changes.xp < 0) {
+            console.warn('[Horae][spirit] 非法 xp，整条拒绝:', changes.xp);
+            return false;
+        }
+    }
+
+    const curTier = state.spirit?.tier || null;
+    const curXp = state.spirit?.xp || 0;
+    const curTotalXpRaw = state.spirit?.totalXp;
+    const curTotalXp = (curTotalXpRaw !== undefined && curTotalXpRaw !== null) ? curTotalXpRaw : curXp;
+
+    let finalTier = curTier;
+    let tierChanged = false;
+    if (hasTier) {
+        const t = changes.tier;
+        if (!SPIRIT_ORDER.includes(t)) {
+            console.warn('[Horae][spirit] 非法 tier，整条拒绝:', t);
+            return false;
+        }
+        if (curTier && t !== curTier) {
+            const curIdx = SPIRIT_ORDER.indexOf(curTier);
+            const newIdx = SPIRIT_ORDER.indexOf(t);
+            if (newIdx !== curIdx + 1) {
+                console.warn('[Horae][spirit] 非法跳段，整条拒绝:', curTier, '->', t);
+                return false;
+            }
+            const threshold = SPIRIT_THRESHOLD[curTier];
+            if (!(curXp >= threshold)) {
+                console.warn('[Horae][spirit] xp 未达阈值，晋升失败，整条拒绝:', curTier, 'xp=' + curXp, 'threshold=' + threshold);
+                return false;
+            }
+            finalTier = t;
+            tierChanged = true;
+        } else if (!curTier) {
+            finalTier = t;
+            tierChanged = true;
+        }
+    }
+
+    let finalXp;
+    if (tierChanged) {
+        finalXp = hasXp ? changes.xp : 0;
+        const t = SPIRIT_THRESHOLD[finalTier];
+        if (finalTier !== '太虚' && finalXp > t) {
+            console.warn('[Horae][spirit] 新段 xp 超上限，整条拒绝:', finalXp, 'max=' + t);
+            return false;
+        }
+    } else {
+        if (!finalTier && hasXp) {
+            console.warn('[Horae][spirit] 无 tier 时不可设置 xp，整条拒绝');
+            return false;
+        }
+        finalXp = hasXp ? changes.xp : curXp;
+        if (hasXp) {
+            if (finalXp < curXp) {
+                console.warn('[Horae][spirit] xp 倒退，整条拒绝:', curXp, '->', finalXp);
+                return false;
+            }
+            if (finalTier !== '太虚') {
+                const t = SPIRIT_THRESHOLD[finalTier];
+                if (finalXp > t) {
+                    console.warn('[Horae][spirit] xp 超上限，整条拒绝:', finalXp, 'max=' + t);
+                    return false;
+                }
+            }
+        }
+    }
+
+    let finalTotalXp;
+    if (tierChanged) {
+        // totalXp 已包含旧段累计值，晋升后只增加新段获得的 xp
+        finalTotalXp = curTotalXp + finalXp;
+    } else {
+        finalTotalXp = curTotalXp + (finalXp - curXp);
+    }
+
+    if (!state.spirit) state.spirit = {};
+    state.spirit.tier = finalTier;
+    state.spirit.xp = finalXp;
+    state.spirit.totalXp = finalTotalXp;
+    return true;
+}
+
+function _applyBarBonusChanges(state, changes) {
+    if (!Array.isArray(changes) || changes.length === 0) return false;
+    if (!state.barBonuses) state.barBonuses = {};
+    let applied = false;
+    for (const c of changes) {
+        const owner = c && c.owner;
+        const type = c && c.type;
+        const delta = c && c.delta;
+        if (!owner || !type || !Number.isSafeInteger(delta) || delta <= 0) continue;
+        if (type !== 'hp' && type !== 'mp' && type !== 'sp') continue;
+        if (!state.barBonuses[owner]) state.barBonuses[owner] = {};
+        state.barBonuses[owner][type] = (state.barBonuses[owner][type] || 0) + delta;
+        applied = true;
+    }
+    return applied;
+}
 
 import { createEmptyMeta, findExistingItemByBaseName, getItemBaseName } from '../horaeManager.js';
 
@@ -62,8 +291,6 @@ export class StateStore {
         for (const [owner, vals] of Object.entries(rpgMeta.attributes || {})) {
             userAttrs[owner] = { ...vals };
         }
-        const userLevels = rpgMeta.levels || {};
-        const userXp = rpgMeta.xp || {};
         const userCurrency = rpgMeta.currency || {};
 
         const _eqCfg = _cfgs.equipmentConfig || rpgMeta.equipmentConfig || { locked: false, perChar: {} };
@@ -71,6 +298,9 @@ export class StateStore {
 
         const _resolve = (raw) => this.manager._resolveRpgOwner(raw);
         const _isCurDel = (name, list, idx) => this.manager._isCurrencyDeletedAt(name, list, idx);
+
+        const _epochRaw = first?.horae_meta?.rpg?._deriveEpoch;
+        const _epoch = (_epochRaw !== undefined && _epochRaw !== null) ? _epochRaw : chat.length;
 
         for (let i = 0; i < end; i++) {
             const changes = chat[i]?.horae_meta?._rpgChanges;
@@ -89,16 +319,9 @@ export class StateStore {
                 }
             }
 
-            // spirit 回放
+            // spirit 回放（含晋升校验 + totalXp 结算，非法整条拒绝）
             if (changes.spirit && typeof changes.spirit === 'object') {
-                const VALID_TIERS = ['蒙昧', '清明', '凝照', '洞玄', '明心', '太虚'];
-                const hasValidTier = typeof changes.spirit.tier === 'string' && VALID_TIERS.includes(changes.spirit.tier);
-                const hasValidXp = typeof changes.spirit.xp === 'number' && Number.isSafeInteger(changes.spirit.xp) && changes.spirit.xp >= 0;
-                if (hasValidTier || hasValidXp) {
-                    if (!snapshot.spirit) snapshot.spirit = {};
-                    if (hasValidTier) snapshot.spirit.tier = changes.spirit.tier;
-                    if (hasValidXp) snapshot.spirit.xp = changes.spirit.xp;
-                }
+                _applySpiritChange(snapshot, changes.spirit);
             }
 
             // realm 回放（与 applyChanges 逻辑一致）
@@ -127,12 +350,18 @@ export class StateStore {
                 }
             }
 
-            // cultivation 回放
+            // cultivation 回放（epoch 门控 + max 从境界派生）
             if (Array.isArray(changes.cultivation) && changes.cultivation.length >= 2) {
                 const cur = changes.cultivation[0];
-                const max = changes.cultivation[1];
-                if (Number.isSafeInteger(cur) && cur >= 0 && Number.isSafeInteger(max) && max >= 0) {
-                    snapshot.cultivation = [cur, max];
+                if (Number.isSafeInteger(cur) && cur >= 0) {
+                    let finalMax;
+                    if (i >= _epoch) {
+                        const derived = deriveCultivationMax(snapshot.realm?.name);
+                        finalMax = derived !== null ? derived : (Number.isSafeInteger(changes.cultivation[1]) ? changes.cultivation[1] : 0);
+                    } else {
+                        finalMax = Number.isSafeInteger(changes.cultivation[1]) ? changes.cultivation[1] : 0;
+                    }
+                    snapshot.cultivation = [cur, finalMax];
                 }
             }
 
@@ -227,12 +456,6 @@ export class StateStore {
                     snapshot.equipment[owner][eq.slot].push({ name: eq.name, attrs: eq.attrs || {} });
                 }
             }
-            for (const [raw, val] of Object.entries(changes.levels || {})) {
-                snapshot.levels[_resolve(raw)] = val;
-            }
-            for (const [raw, val] of Object.entries(changes.xp || {})) {
-                snapshot.xp[_resolve(raw)] = val;
-            }
             const validDenoms = new Set((curConfig.denominations || []).map(d => d.name));
             for (const c of (changes.currency || [])) {
                 if (_isCurDel(c.name, deletedCurrencies, i)) continue;
@@ -266,6 +489,24 @@ export class StateStore {
                     else if (bc.field === 'desc') targetNode.desc = String(bc.value);
                 }
             }
+
+            // ── barBonus 重放 + bars max 派生（仅 epoch 范围内）──
+            {
+                const _bonusApplied = _applyBarBonusChanges(snapshot, changes.barBonusChanges);
+                const _realmChanged = !!changes.realm;
+                const _spiritChanged = !!(
+                    changes.spirit &&
+                    typeof changes.spirit === 'object' &&
+                    (
+                        Object.prototype.hasOwnProperty.call(changes.spirit, 'tier') ||
+                        Object.prototype.hasOwnProperty.call(changes.spirit, 'xp')
+                    )
+                );
+                const _needInit = _barsNeedMaxInit(snapshot);
+                if ((_realmChanged || _spiritChanged || _bonusApplied || _needInit) && i >= _epoch) {
+                    _deriveAllBarsMax(snapshot);
+                }
+            }
         }
 
         // 合入用户手动属性（AI 数据优先覆盖）
@@ -289,13 +530,7 @@ export class StateStore {
                 if (!snapshot.skills[del.owner].length) delete snapshot.skills[del.owner];
             }
         }
-        // 回填手动等级/经验/货币；已有回放值优先
-        for (const [owner, val] of Object.entries(userLevels)) {
-            if (snapshot.levels[owner] === undefined) snapshot.levels[owner] = val;
-        }
-        for (const [owner, val] of Object.entries(userXp)) {
-            if (snapshot.xp[owner] === undefined) snapshot.xp[owner] = val;
-        }
+        // 回填手动经验/货币；已有回放值优先
         for (const [owner, coins] of Object.entries(userCurrency)) {
             if (!snapshot.currency[owner]) snapshot.currency[owner] = {};
             for (const [name, val] of Object.entries(coins || {})) {
@@ -382,16 +617,9 @@ export class StateStore {
             }
         }
 
-        // spirit 合并
+        // spirit 合并（含晋升校验 + totalXp 结算，非法整条拒绝）
         if (changes.spirit && typeof changes.spirit === 'object') {
-            const VALID_TIERS = ['蒙昧', '清明', '凝照', '洞玄', '明心', '太虚'];
-            const hasValidTier = typeof changes.spirit.tier === 'string' && VALID_TIERS.includes(changes.spirit.tier);
-            const hasValidXp = typeof changes.spirit.xp === 'number' && Number.isSafeInteger(changes.spirit.xp) && changes.spirit.xp >= 0;
-            if (hasValidTier || hasValidXp) {
-                if (!rpg.spirit) rpg.spirit = {};
-                if (hasValidTier) rpg.spirit.tier = changes.spirit.tier;
-                if (hasValidXp) rpg.spirit.xp = changes.spirit.xp;
-            }
+            _applySpiritChange(rpg, changes.spirit);
         }
 
         // realm 合并（支持 phase-only 增量）
@@ -433,13 +661,22 @@ export class StateStore {
             }
         }
 
-        // cultivation 合并
+        // cultivation 合并（epoch 门控 + max 从境界派生）
         if (Array.isArray(changes.cultivation) && changes.cultivation.length >= 2) {
             const cur = changes.cultivation[0];
-            const max = changes.cultivation[1];
-            if (Number.isSafeInteger(cur) && cur >= 0 && Number.isSafeInteger(max) && max >= 0) {
-                rpg.cultivation = [cur, max];
-                if (cur > max) console.warn('[Horae][cultivation] cur > max，保留:', cur, max);
+            if (Number.isSafeInteger(cur) && cur >= 0) {
+                const _epochRaw = rpg._deriveEpoch;
+                const _epoch = (_epochRaw !== undefined && _epochRaw !== null) ? _epochRaw : chat.length;
+                const _hasMsgIdx = Number.isInteger(messageIndex);
+                const _inEpoch = !_hasMsgIdx || messageIndex >= _epoch;
+                let finalMax;
+                if (_inEpoch) {
+                    const derived = deriveCultivationMax(rpg.realm?.name);
+                    finalMax = derived !== null ? derived : (Number.isSafeInteger(changes.cultivation[1]) ? changes.cultivation[1] : 0);
+                } else {
+                    finalMax = Number.isSafeInteger(changes.cultivation[1]) ? changes.cultivation[1] : 0;
+                }
+                rpg.cultivation = [cur, finalMax];
             } else {
                 console.warn('[Horae][cultivation] 非法值，忽略:', changes.cultivation);
             }
@@ -460,6 +697,28 @@ export class StateStore {
                 rpg.lifespan = changes.lifespan;
             } else {
                 console.warn('[Horae][lifespan] 非法值，忽略:', changes.lifespan);
+            }
+        }
+
+        // ── barBonus 处理 + bars max 派生 ──
+        {
+            const _bonusApplied = _applyBarBonusChanges(rpg, changes.barBonusChanges);
+            const _realmChanged = !!changes.realm;
+            const _spiritChanged = !!(
+                changes.spirit &&
+                typeof changes.spirit === 'object' &&
+                (
+                    Object.prototype.hasOwnProperty.call(changes.spirit, 'tier') ||
+                    Object.prototype.hasOwnProperty.call(changes.spirit, 'xp')
+                )
+            );
+            const _needInit = _barsNeedMaxInit(rpg);
+            const _epochRaw = rpg._deriveEpoch;
+            const _epoch = (_epochRaw !== undefined && _epochRaw !== null) ? _epochRaw : chat.length;
+            const _hasMsgIdx = Number.isInteger(messageIndex);
+            const _inEpoch = !_hasMsgIdx || messageIndex >= _epoch;
+            if ((_realmChanged || _spiritChanged || _bonusApplied || _needInit) && _inEpoch) {
+                _deriveAllBarsMax(rpg);
             }
         }
 
@@ -646,20 +905,6 @@ export class StateStore {
                 }
             }
         }
-        // 等级
-        for (const [raw, val] of Object.entries(changes.levels || {})) {
-            const owner = manager._resolveRpgOwner(raw);
-            if (manager.settings?.rpgLevelUserOnly && owner !== _mUN) continue;
-            if (!rpg.levels) rpg.levels = {};
-            rpg.levels[owner] = val;
-        }
-        // 经验值
-        for (const [raw, val] of Object.entries(changes.xp || {})) {
-            const owner = manager._resolveRpgOwner(raw);
-            if (manager.settings?.rpgLevelUserOnly && owner !== _mUN) continue;
-            if (!rpg.xp) rpg.xp = {};
-            rpg.xp[owner] = val;
-        }
         // 货币：只接受 currencyConfig 中已定义的币种（配置为空时不限制）
         if (changes.currency?.length > 0) {
             const _cfgs2 = manager.getChat()?.[0]?.horae_meta?._rpgConfigs;
@@ -740,8 +985,6 @@ export class StateStore {
         }
         const userAttrs = rpg.attributes || {};
         const oldReputation = rpg.reputation ? JSON.parse(JSON.stringify(rpg.reputation)) : {};
-        const oldLevels = rpg.levels ? JSON.parse(JSON.stringify(rpg.levels)) : {};
-        const oldXp = rpg.xp ? JSON.parse(JSON.stringify(rpg.xp)) : {};
         const oldCurrency = rpg.currency ? JSON.parse(JSON.stringify(rpg.currency)) : {};
 
         // ── 只重置可重放的数据字段 ──
@@ -751,8 +994,6 @@ export class StateStore {
         rpg.attributes = { ...userAttrs };
         rpg.reputation = {};
         rpg.equipment = {};
-        rpg.levels = {};
-        rpg.xp = {};
         rpg.currency = {};
         rpg.spirit = null;
         rpg.arts = {};
@@ -761,6 +1002,7 @@ export class StateStore {
         rpg.cultivation = null;
         rpg.age = null;
         rpg.lifespan = null;
+        rpg.barBonuses = {};
 
         // ── config 从权威来源写入 rpg（供 _mergeRpgData 使用） ──
         rpg.reputationConfig = repCfg;
@@ -792,12 +1034,6 @@ export class StateStore {
         }
 
         // ── 回填手动设置的等级/经验/货币；已有回放值优先，避免覆盖历史变化 ──
-        for (const [owner, val] of Object.entries(oldLevels)) {
-            if (rpg.levels[owner] === undefined) rpg.levels[owner] = val;
-        }
-        for (const [owner, val] of Object.entries(oldXp)) {
-            if (rpg.xp[owner] === undefined) rpg.xp[owner] = val;
-        }
         for (const [owner, coins] of Object.entries(oldCurrency)) {
             if (!rpg.currency[owner]) rpg.currency[owner] = {};
             for (const [name, val] of Object.entries(coins || {})) {

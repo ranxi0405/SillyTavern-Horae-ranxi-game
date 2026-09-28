@@ -1461,13 +1461,11 @@ if (sendCharacters) {
             const _cUoA = !!this.settings?.rpgAttrsUserOnly;
             const _cUoE = !!this.settings?.rpgEquipmentUserOnly;
             const _cUoR = !!this.settings?.rpgReputationUserOnly;
-            const _cUoL = !!this.settings?.rpgLevelUserOnly;
             const _cUoC = !!this.settings?.rpgCurrencyUserOnly;
             const allRpgNames = new Set([
                 ...Object.keys(rpg.bars), ...Object.keys(rpg.status || {}),
                 ...Object.keys(rpg.skills), ...Object.keys(rpg.attributes || {}),
                 ...Object.keys(rpg.reputation || {}), ...Object.keys(rpg.equipment || {}),
-                ...Object.keys(rpg.levels || {}), ...Object.keys(rpg.xp || {}),
                 ...Object.keys(rpg.currency || {}),
             ]);
             const rpgAllowed = new Set();
@@ -1616,24 +1614,6 @@ if (sendCharacters) {
                         if (!hasRepData) { lines.push(`\n[${L('声望','Reputation','名声','명성','Репутация')}]`); hasRepData = true; }
                         lines.push(`${_ctxPre(name, _cUoR)}${parts.join(' | ')}`);
                     }
-                }
-            }
-
-            // 等级
-            const sendLvl = !!this.settings?.sendRpgLevel;
-            if (sendLvl && (Object.keys(rpg.levels || {}).length > 0 || Object.keys(rpg.xp || {}).length > 0)) {
-                const allLvlNames = new Set([...Object.keys(rpg.levels || {}), ...Object.keys(rpg.xp || {})]);
-                let hasLvlData = false;
-                for (const name of allLvlNames) {
-                    if (_cUoL && name !== userName) continue;
-                    if (filterRpg && !rpgAllowed.has(name)) continue;
-                    const lv = rpg.levels?.[name];
-                    const xp = rpg.xp?.[name];
-                    if (lv == null && !xp) continue;
-                    if (!hasLvlData) { lines.push(`\n[${L('等级','Level','レベル','레벨','Уровень')}]`); hasLvlData = true; }
-                    let lvStr = lv != null ? `Lv.${lv}` : '';
-                    if (xp) lvStr += ` (${L('经验','XP','経験','경험','опыт')}: ${xp[0]}/${xp[1]})`;
-                    lines.push(`${_ctxPre(name, _cUoL)}${lvStr.trim()}`);
                 }
             }
 
@@ -2369,7 +2349,7 @@ if (sendCharacters) {
 
         // 解析 RPG 数据
         if (rpgMatches.length > 0) {
-            result.rpg = { bars: {}, status: {}, skills: [], removedSkills: [], attributes: {}, reputation: {}, equipment: [], unequip: [], levels: {}, xp: {}, currency: [], baseChanges: [], arts: [], shenTong: [], realm: null, cultivation: null, age: null, lifespan: null };
+            result.rpg = { bars: {}, status: {}, skills: [], removedSkills: [], attributes: {}, reputation: {}, equipment: [], unequip: [], currency: [], baseChanges: [], arts: [], shenTong: [], realm: null, cultivation: null, age: null, lifespan: null };
             const rm = [...rpgMatches].reverse().find(m => String(m[1] || '').trim()) || rpgMatches[rpgMatches.length - 1];
             const rpgContent = rm[1].trim();
             for (const rpgLine of rpgContent.split('\n')) {
@@ -2497,13 +2477,12 @@ if (sendCharacters) {
                 || Object.keys(r.reputation || {}).length > 0
                 || (r.equipment || []).length > 0
                 || (r.unequip || []).length > 0
-                || Object.keys(r.levels || {}).length > 0
-                || Object.keys(r.xp || {}).length > 0
                 || (r.currency || []).length > 0
                 || (r.baseChanges || []).length > 0
                 || (r.arts || []).length > 0
                 || (r.shenTong || []).length > 0
                 || (r.spirit && (r.spirit.tier || typeof r.spirit.xp === 'number'))
+                || (r.barBonusChanges || []).length > 0
                 || (r.realm && (r.realm.name || r.realm.phase))
                 || (Array.isArray(r.cultivation) && r.cultivation.length >= 2)
                 || (typeof r.age === 'number')
@@ -2524,14 +2503,18 @@ if (sendCharacters) {
         const _uoA = !!this.settings?.rpgAttrsUserOnly;
         const _uoE = !!this.settings?.rpgEquipmentUserOnly;
         const _uoR = !!this.settings?.rpgReputationUserOnly;
-        const _uoL = !!this.settings?.rpgLevelUserOnly;
         const _uoC = !!this.settings?.rpgCurrencyUserOnly;
+
+        // 非 bar 协议行的保留关键字（spirit / currency / realm / craft 等有独立 Parser 分支）
+        const _NON_BAR_PREFIX = /^(status|skill|spirit|realm|realm_phase|cultivation|age|lifespan|craft|shentong|currency|base|npc|item|affection|mood|agenda|costume|event|time|location|atmosphere|scene_desc|characters|attr)$/i;
 
         // 通用：检测行是否为无owner的userOnly格式（首段含=即正常格式，否则可能是UO格式）
         // 属性条: 正常 key:owner=cur/max 或 userOnly key:cur/max(显示名)
         const barNormal = line.match(/^([a-zA-Z]\w*):(.+?)=(\d+)\s*\/\s*(\d+)(?:\((.+?)\))?$/i);
         const barUo = _uoB ? line.match(/^([a-zA-Z]\w*):(\d+)\s*\/\s*(\d+)(?:\((.+?)\))?$/i) : null;
-        if (barNormal && !/^(status|skill)$/i.test(barNormal[1])) {
+        const barShort = line.match(/^([a-zA-Z]\w*):(.+?)=(\d+)(?:\((.+?)\))?$/i);
+        const barShortUo = _uoB ? line.match(/^([a-zA-Z]\w*):(\d+)(?:\((.+?)\))?$/i) : null;
+        if (barNormal && !_NON_BAR_PREFIX.test(barNormal[1])) {
             const type = barNormal[1].toLowerCase();
             const owner = _uoB ? _uoName : barNormal[2].trim();
             const current = parseInt(barNormal[3]);
@@ -2542,14 +2525,30 @@ if (sendCharacters) {
             rpg.bars[owner][type] = label ? [current, max, label] : [current, max];
             return;
         }
-        if (barUo && !/^(status|skill)$/i.test(barUo[1])) {
+        if (barUo && !_NON_BAR_PREFIX.test(barUo[1])) {
             const type = barUo[1].toLowerCase();
             const current = parseInt(barUo[2]);
-            let max = parseInt(barUo[3]);
-            if (current > max) max = current;
+            const max = parseInt(barUo[3]);
             const label = barUo[4]?.trim() || null;
             if (!rpg.bars[_uoName]) rpg.bars[_uoName] = {};
             rpg.bars[_uoName][type] = label ? [current, max, label] : [current, max];
+            return;
+        }
+        if (barShort && !_NON_BAR_PREFIX.test(barShort[1])) {
+            const type = barShort[1].toLowerCase();
+            const owner = _uoB ? _uoName : barShort[2].trim();
+            const current = parseInt(barShort[3]);
+            const label = barShort[4]?.trim() || null;
+            if (!rpg.bars[owner]) rpg.bars[owner] = {};
+            rpg.bars[owner][type] = label ? [current, null, label] : [current, null];
+            return;
+        }
+        if (barShortUo && !_NON_BAR_PREFIX.test(barShortUo[1])) {
+            const type = barShortUo[1].toLowerCase();
+            const current = parseInt(barShortUo[2]);
+            const label = barShortUo[3]?.trim() || null;
+            if (!rpg.bars[_uoName]) rpg.bars[_uoName] = {};
+            rpg.bars[_uoName][type] = label ? [current, null, label] : [current, null];
             return;
         }
         // status
@@ -2690,51 +2689,6 @@ if (sendCharacters) {
                     if (!rpg.reputation) rpg.reputation = {};
                     if (!rpg.reputation[owner]) rpg.reputation[owner] = {};
                     rpg.reputation[owner][kv[1].trim()] = parseInt(kv[2]);
-                }
-            }
-            return;
-        }
-        // level
-        if (line.startsWith('level:')) {
-            const str = line.substring(6).trim();
-            if (_uoL) {
-                const val = parseInt(str);
-                if (!isNaN(val)) {
-                    if (!rpg.levels) rpg.levels = {};
-                    rpg.levels[_uoName] = val;
-                }
-            } else {
-                const eq = str.indexOf('=');
-                if (eq > 0) {
-                    const owner = str.substring(0, eq).trim();
-                    const val = parseInt(str.substring(eq + 1).trim());
-                    if (!isNaN(val)) {
-                        if (!rpg.levels) rpg.levels = {};
-                        rpg.levels[owner] = val;
-                    }
-                }
-            }
-            return;
-        }
-        // xp
-        if (line.startsWith('xp:')) {
-            const str = line.substring(3).trim();
-            if (_uoL) {
-                const m = str.match(/^(\d+)\s*\/\s*(\d+)$/);
-                if (m) {
-                    if (!rpg.xp) rpg.xp = {};
-                    rpg.xp[_uoName] = [parseInt(m[1]), parseInt(m[2])];
-                }
-            } else {
-                const eq = str.indexOf('=');
-                if (eq > 0) {
-                    const owner = str.substring(0, eq).trim();
-                    const valStr = str.substring(eq + 1).trim();
-                    const m = valStr.match(/^(\d+)\s*\/\s*(\d+)$/);
-                    if (m) {
-                        if (!rpg.xp) rpg.xp = {};
-                        rpg.xp[owner] = [parseInt(m[1]), parseInt(m[2])];
-                    }
                 }
             }
             return;
@@ -2885,6 +2839,21 @@ if (sendCharacters) {
             }
             return;
         }
+        // bonus:永久上限加成（bonus:hp:owner=+50 或 userOnly bonus:hp=+50）
+        if (line.startsWith('bonus:')) {
+            const m = line.match(/^bonus:([a-z]+):(.+?)=\+(\d+)$/i);
+            const mUo = _uoB ? line.match(/^bonus:([a-z]+)=\+(\d+)$/i) : null;
+            const type = m ? m[1].toLowerCase() : (mUo ? mUo[1].toLowerCase() : null);
+            const owner = m ? m[2].trim() : (_uoB ? _uoName : null);
+            const delta = m ? parseInt(m[3]) : (mUo ? parseInt(mUo[2]) : null);
+            if (type && owner && delta != null && (type === 'hp' || type === 'mp' || type === 'sp')) {
+                if (!rpg.barBonusChanges) rpg.barBonusChanges = [];
+                rpg.barBonusChanges.push({ owner, type, delta });
+            } else {
+                console.warn('[Horae][bonus] 非法行，忽略:', line);
+            }
+            return;
+        }
         // realm:大境界名（炼气/筑基/.../登仙/飞升）
         if (line.startsWith('realm:')) {
             if (!rpg._realmTmp) rpg._realmTmp = { name: null, phase: null, _seen: false };
@@ -2911,16 +2880,25 @@ if (sendCharacters) {
             }
             return;
         }
-        // cultivation:当前修为/上限
+        // cultivation:当前修为（新短格式 cur）或 当前修为/上限（旧格式兼容）
         if (line.startsWith('cultivation:')) {
             const str = line.substring(12).trim();
+            const mShort = str.match(/^(\d+)$/);
+            if (mShort) {
+                const cur = Number(mShort[1]);
+                if (Number.isSafeInteger(cur) && cur >= 0) {
+                    rpg.cultivation = [cur, null];
+                } else {
+                    console.warn('[Horae][cultivation] 数值超出安全整数，忽略:', str);
+                }
+                return;
+            }
             const m = str.match(/^(\d+)\s*\/\s*(\d+)$/);
             if (m) {
                 const cur = Number(m[1]);
                 const max = Number(m[2]);
                 if (Number.isSafeInteger(cur) && Number.isSafeInteger(max)) {
                     rpg.cultivation = [cur, max];
-                    if (cur > max) console.warn('[Horae][cultivation] cur > max，保留:', cur, max);
                 } else {
                     console.warn('[Horae][cultivation] 数值超出安全整数，忽略:', str);
                 }
@@ -3039,7 +3017,6 @@ if (sendCharacters) {
             bars: {}, status: {}, skills: {}, attributes: {},
             reputation: {}, reputationConfig: { categories: [], _deletedCategories: [] },
             equipment: {}, equipmentConfig: { locked: false, perChar: {} },
-            levels: {}, xp: {},
             currency: {}, currencyConfig: { denominations: [] },
         };
     }
@@ -4236,8 +4213,12 @@ generateSystemPromptAddition() {
         const lang = this._getAiOutputLang();
         const isZh = lang === 'zh-CN' || lang === 'zh-TW';
         const spiritNote = isZh
-            ? '\n\n【神识数据——仅变化时输出】\nspirit:tier=段位名（蒙昧/清明/凝照/洞玄/明心/太虚）\nspirit:xp=累计总值（不是增量）\n仅当本回合剧情明确导致神识段位或累计值发生变化时输出对应行。\n没有变化时不要输出 spirit 行。\n神识段位没有定义自动晋升阈值，不要自行计算或晋升。'
-            : '\n\n[Spirit Data — output only on change]\nspirit:tier=tier name\nspirit:xp=cumulative total (not delta)\nOutput only when this turn changes spirit tier or xp.\nDo NOT output spirit lines when nothing changes.\nNo auto-promotion thresholds; do NOT compute or promote tiers yourself.';
+            ? '\n\n【神识数据——仅变化时输出】\nspirit:tier=段位名（蒙昧/清明/凝照/洞玄/明心/太虚）\nspirit:xp=当前段位内的累计值（不是终身累计，不是增量）\n段内阈值：蒙昧1000 / 清明3000 / 凝照6000 / 洞玄10000 / 明心15000 / 太虚无上限\n晋升规则：当前段位 xp 达到阈值后，可声明 spirit:tier=下一段位。只能相邻 +1 晋升。\n仅当本回合剧情明确导致神识段位或段内值发生变化时输出对应行。\n没有变化时不要输出 spirit 行。'
+            : '\n\n[Spirit Data — output only on change]\nspirit:tier=tier name (蒙昧/清明/凝照/洞玄/明心/太虚)\nspirit:xp=current tier cumulative (not lifetime total, not delta)\nTier thresholds: 蒙昧1000 / 清明3000 / 凝照6000 / 洞玄10000 / 明心15000 / 太虚 no cap\nPromotion: when current tier xp reaches threshold, declare spirit:tier=next tier. Only adjacent +1 promotion allowed.\nOutput only when this turn changes spirit tier or tier-internal xp.\nDo NOT output spirit lines when nothing changes.';
+
+        const bonusNote = isZh
+            ? '\n\n【永久上限加成——仅突破反哺/永久丹药/传承/宝物等永久效果时输出】\nbonus:hp:归属=+N\nbonus:mp:归属=+N\nbonus:sp:归属=+N\n只允许正向加成，永久生效。普通临时 buff 不要写这里。\n没有永久加成时不要输出 bonus 行。'
+            : '\n\n[Permanent Cap Bonus — only on breakthrough feedback / permanent pill / inheritance / treasure]\nbonus:hp:owner=+N\nbonus:mp:owner=+N\nbonus:sp:owner=+N\nPositive only, permanent. Do NOT write temporary buffs here.\nDo NOT output bonus lines when nothing permanent changes.';
 
         const craftNote = isZh
             ? '\n\n【六艺数据——仅变化时输出】\ncraft:归属|名称|段位|累计值\n段位按世界书对六艺的既有定义输出（学徒/一品/二品/三品/四品/五品/六品）。\n累计值为当前总值（不是增量）。\n名称字段必须使用以下六个中文 canonical key：炼丹 / 炼器 / 符箓 / 阵法 / 御兽 / 灵植。不得使用其他语言名称、缩写或改写。\n没有依据改变段位时，不要自行推导或升级。'
@@ -4252,10 +4233,10 @@ generateSystemPromptAddition() {
             : '\n\n[Skill Category]\nskill:owner|name|level|desc|category\nCategories: main/attack/movement/body/spirit/secret/other';
 
         const realmNote = isZh
-            ? '\n\n【境界 / 修为 / 寿元——仅变化时输出】\nrealm:大境界名（炼气/筑基/结晶/金丹/具灵/元婴/化神/悟道/羽化/登仙/飞升）\nrealm_phase:阶段（初期/中期/后期/圆满；飞升为空）\ncultivation:当前修为/上限（两个非负整数）\nage:当前年龄（非负整数）\nlifespan:当前寿元上限（非负整数，含境界基础 + 已有永久加成）\n变化时才输出，无变化不输出。\nrealm 和 realm_phase 的顺序可任意，两者一起才构成完整境界。\nrealm 单独输出时 phase 为空（不继承旧阶段）。\nrealm_phase 单独输出时更新已有境界的阶段。\n突破时 lifespan 必须考虑已有永久加成：\n  新寿元上限 = 新境界基础上限 + (旧寿元上限 - 旧境界基础上限)\n境界名必须使用标准名称，不得使用其他写法。'
-            : '\n\n[Realm / Cultivation / Lifespan — output only on change]\nrealm:realm name (炼气/筑基/结晶/金丹/具灵/元婴/化神/悟道/羽化/登仙/飞升)\nrealm_phase:phase (初期/中期/后期/圆满; empty for 飞升)\ncultivation:current/max (two non-negative integers)\nage:current age (non-negative integer)\nlifespan:current lifespan cap (non-negative integer; includes realm base + permanent bonuses)\nOutput only when changed.\nrealm and realm_phase order is arbitrary; both together form the complete realm.\nrealm alone means phase is null (do NOT inherit old phase).\nrealm_phase alone updates the phase of the existing realm.\nOn breakthrough, lifespan must account for existing permanent bonuses:\n  new lifespan = new realm base + (old lifespan - old realm base)\nRealm name MUST use canonical names only.';
+            ? '\n\n【境界 / 修为 / 寿元——仅变化时输出】\nrealm:大境界名（炼气/筑基/结晶/金丹/具灵/元婴/化神/悟道/羽化/登仙/飞升）\ncultivation:当前修为值（非负整数，仅 cur）\nage:当前年龄（非负整数）\nlifespan:当前寿元上限（非负整数，含境界基础 + 已有永久加成）\n变化时才输出，无变化不输出。\n小境界（初期/中期/后期/圆满）由系统根据 cultivation 自动判定，AI 不需输出 realm_phase。\n如需表现小境界，请通过 cultivation 数值体现。\n境界名必须使用标准名称，不得使用其他写法。'
+            : '\n\n[Realm / Cultivation / Lifespan — output only on change]\nrealm:realm name (炼气/筑基/结晶/金丹/具灵/元婴/化神/悟道/羽化/登仙/飞升)\ncultivation:current cultivation value (non-negative integer, cur only)\nage:current age (non-negative integer)\nlifespan:current lifespan cap (non-negative integer; includes realm base + permanent bonuses)\nOutput only when changed.\nSub-stages (初期/中期/后期/圆满) are auto-determined by the system based on cultivation; AI need NOT output realm_phase.\nTo express sub-stage, reflect it via the cultivation value.\nRealm name MUST use canonical names only.';
 
-        return '\n' + base + spiritNote + craftNote + shenTongNote + skillCategoryNote + realmNote;
+        return '\n' + base + spiritNote + bonusNote + craftNote + shenTongNote + skillCategoryNote + realmNote;
     }
 
     /** RPG 默认提示词（资源优先，支持分段占位符） */
@@ -4286,7 +4267,6 @@ generateSystemPromptAddition() {
                 skills: '【スキル】習得/レベルアップ/喪失時のみ記載、変化なしなら省略可',
                 equipment: '【装備】キャラクターが装備/解除した時に記載、変化なしなら省略可',
                 reputation: '【評判】評判が変化した時のみ記載、変化なしなら省略可',
-                level: '【レベルと経験値】レベルアップ/ダウンまたは経験値変化時のみ記載、変化なしなら省略可',
                 currency: '【通貨——取引/拾得/消費が発生した時は必ず記載！】',
                 stronghold: '【拠点/基地】拠点の状態が変化した時に記載（アップグレード/建設/破壊/説明更新）、変化なしなら省略可。既存の拠点名は下記「現在の拠点」と完全一致させる — 省略・言い換え・接頭辞変形は禁止',
             };
@@ -4298,7 +4278,6 @@ generateSystemPromptAddition() {
                 skills: '【스킬】습득/승급/상실 시에만 기재, 변화 없으면 생략 가능',
                 equipment: '【장비】캐릭터가 장비 착용/해제 시 기재, 변화 없으면 생략 가능',
                 reputation: '【평판】평판 변화 시에만 기재, 변화 없으면 생략 가능',
-                level: '【레벨과 경험치】레벨 업/다운 또는 경험치 변화 시에만 기재, 변화 없으면 생략 가능',
                 currency: '【화폐 — 거래/획득/소비 발생 시 필수 기재!】',
                 stronghold: '【거점/기지】거점 상태 변화 시 기재(업그레이드/건설/파괴/설명 변경), 변화 없으면 생략 가능. 기존 거점은 아래 \'현재 거점\'에 표시된 이름과 정확히 일치해야 함 — 줄임/변형/접두사 변형 금지',
             };
@@ -4310,7 +4289,6 @@ generateSystemPromptAddition() {
                 skills: '[Навыки] Записывайте только при изучении/повышении/потере; пропускайте, если без изменений',
                 equipment: '[Снаряжение] Записывайте при экипировке/снятии; пропускайте, если без изменений',
                 reputation: '[Репутация] Записывайте только при изменении репутации; пропускайте, если без изменений',
-                level: '[Уровень и опыт] Записывайте только при повышении/понижении уровня или изменении опыта; пропускайте, если без изменений',
                 currency: '[Валюта — ОБЯЗАТЕЛЬНО записывать при любой сделке/подборе/трате!]',
                 stronghold: '[Крепости] Записывайте при изменении статуса крепости (улучшение/строительство/разрушение/обновление описания); пропускайте, если без изменений. Существующие крепости ДОЛЖНЫ использовать точно такие же названия, как в списке ниже — сокращения, переименования и варианты с префиксами запрещены',
             };
@@ -4322,7 +4300,6 @@ generateSystemPromptAddition() {
                 skills: '[Skills] Write only when learned/upgraded/lost; skip if unchanged',
                 equipment: '[Equipment] Write when character equips/unequips; skip if unchanged',
                 reputation: '[Reputation] Write only when reputation changes; skip if unchanged',
-                level: '[Level & XP] Write only on level-up/down or XP change; skip if unchanged',
                 currency: '[Currency — MUST write on any trade/pickup/spending!]',
                 stronghold: '[Strongholds] Write when stronghold status changes (upgrade/build/destroy/description update); skip if unchanged. Existing strongholds MUST always use the exact same name as listed in "Current strongholds" below — no abbreviations, rewrites, or prefixed variants of existing names',
             };
@@ -4333,7 +4310,6 @@ generateSystemPromptAddition() {
             skills: '【技能】仅习得/升级/失去时写，无变化可省略',
             equipment: '【装备】角色穿戴/卸下装备时写，无变化可省略',
             reputation: '【声望】仅声望变化时写，无变化可省略',
-            level: '【等级与经验值】仅升级/降级或经验变化时写，无变化可省略',
             currency: '【货币——发生交易/拾取/消费时必写！】',
             stronghold: '【据点/基地】据点状态变化时写（升级/建造/损毁/描述变更），无变化可省略。已有据点必须始终使用与下方「当前据点」完全一致的名称，禁止对已有名称做缩写/改写/加前缀变体',
         };
@@ -4348,14 +4324,13 @@ generateSystemPromptAddition() {
             skills: '',
             equipment: '',
             reputation: '',
-            level: '',
             currency: '',
             stronghold: '',
         };
         if (!promptText || typeof promptText !== 'string') return empty;
 
         const headings = this._getRpgSectionHeadingsByLang(lang);
-        const keys = ['bars', 'attrs', 'skills', 'equipment', 'reputation', 'level', 'currency', 'stronghold'];
+        const keys = ['bars', 'attrs', 'skills', 'equipment', 'reputation', 'currency', 'stronghold'];
         const marks = [];
         for (const key of keys) {
             const h = headings[key];
@@ -4386,11 +4361,10 @@ generateSystemPromptAddition() {
             skills: sections.skills || '',
             equipment: sections.equipment || '',
             reputation: sections.reputation || '',
-            level: sections.level || '',
             currency: sections.currency || '',
             stronghold: sections.stronghold || '',
         };
-        return template.replace(/\[\[\s*rpg\.(full|header|bars|attrs|skills|equipment|reputation|level|currency|stronghold)\s*\]\]/gi, (_, key) => {
+        return template.replace(/\[\[\s*rpg\.(full|header|bars|attrs|skills|equipment|reputation|currency|stronghold)\s*\]\]/gi, (_, key) => {
             const k = String(key || '').toLowerCase();
             return map[k] ?? '';
         });
@@ -4403,10 +4377,9 @@ generateSystemPromptAddition() {
         const sendAttrs = this.settings?.sendRpgAttributes !== false;
         const sendEq = !!this.settings?.sendRpgEquipment;
         const sendRep = !!this.settings?.sendRpgReputation;
-        const sendLvl = !!this.settings?.sendRpgLevel;
         const sendCur = !!this.settings?.sendRpgCurrency;
         const sendSh = !!this.settings?.sendRpgStronghold;
-        if (!sendBars && !sendSkills && !sendAttrs && !sendEq && !sendRep && !sendLvl && !sendCur && !sendSh) return '';
+        if (!sendBars && !sendSkills && !sendAttrs && !sendEq && !sendRep && !sendCur && !sendSh) return '';
         const lang = this._getAiOutputLang();
         const L = (zh, en, ja, ko, ru) => {
             if (lang === 'zh-CN' || lang === 'zh-TW') return zh;
@@ -4421,10 +4394,9 @@ generateSystemPromptAddition() {
         const uoAttrs = !!this.settings?.rpgAttrsUserOnly;
         const uoEq = !!this.settings?.rpgEquipmentUserOnly;
         const uoRep = !!this.settings?.rpgReputationUserOnly;
-        const uoLvl = !!this.settings?.rpgLevelUserOnly;
         const uoCur = !!this.settings?.rpgCurrencyUserOnly;
-        const anyUo = uoBars || uoSkills || uoAttrs || uoEq || uoRep || uoLvl || uoCur;
-        const allUo = uoBars && uoSkills && uoAttrs && uoEq && uoRep && uoLvl && uoCur;
+        const anyUo = uoBars || uoSkills || uoAttrs || uoEq || uoRep || uoCur;
+        const allUo = uoBars && uoSkills && uoAttrs && uoEq && uoRep && uoCur;
         const barCfg = this.settings?.rpgBarConfig || [
             { key: 'hp', name: 'HP' }, { key: 'mp', name: 'MP' }, { key: 'sp', name: 'SP' }
         ];
@@ -4737,40 +4709,6 @@ generateSystemPromptAddition() {
                 );
             }
         }
-        if (sendLvl) {
-            p += L(
-                `\n【等级与经验值】仅升级/降级或经验变化时写，无变化可省略\n`,
-                `\n[Level & XP] Write only on level-up/down or XP change; skip if unchanged\n`,
-                `\n【レベルと経験値】レベルアップ/ダウンまたは経験値変化時のみ記載、変化なしなら省略可\n`,
-                `\n【레벨과 경험치】레벨 업/다운 또는 경험치 변화 시에만 기재, 변화 없으면 생략 가능\n`,
-                `\n[Уровень и опыт] Записывайте только при повышении/понижении уровня или изменении опыта; пропускайте, если без изменений\n`
-            );
-            if (uoLvl) {
-                p += L(
-                    `  level:等级数值\n  xp:当前经验/升级所需\n`,
-                    `  level:level number\n  xp:current XP/needed for level-up\n`,
-                    `  level:レベル数値\n  xp:現在の経験値/レベルアップに必要な値\n`,
-                    `  level:레벨 수치\n  xp:현재 경험치/레벨업 필요치\n`,
-                    `  level:число уровня\n  xp:текущий опыт/необходимо для повышения\n`
-                );
-            } else {
-                p += L(
-                    `  level:归属=等级数值\n  xp:归属=当前经验/升级所需\n`,
-                    `  level:${own}=level number\n  xp:${own}=current XP/needed for level-up\n`,
-                    `  level:${own}=レベル数値\n  xp:${own}=現在の経験値/レベルアップに必要な値\n`,
-                    `  level:${own}=레벨 수치\n  xp:${own}=현재 경험치/레벨업 필요치\n`,
-                    `  level:${own}=число уровня\n  xp:${own}=текущий опыт/необходимо для повышения\n`
-                );
-            }
-            p += L(`  经验值获取参考：\n`, `  XP gain reference:\n`, `  経験値獲得の参考：\n`, `  경험치 획득 참고:\n`, `  Справка по получению опыта:\n`);
-            p += L(
-                `  - 与角色等级相近或更强的挑战：获得较多经验(10~50+)\n  - 等级差 ≥10 的低级挑战：仅得 1 点经验\n  - 日常活动/对话/探索：少量经验(1~5)\n  - 升级所需经验随等级递增：建议 升级所需 = 等级 × 100\n`,
-                `  - Challenge near or above character level: more XP (10~50+)\n  - Level gap ≥10 trivial challenge: only 1 XP\n  - Daily activities/dialogue/exploration: small XP (1~5)\n  - XP needed increases with level: suggested formula = level × 100\n`,
-                `  - キャラクターレベルに近いまたはそれ以上の挑戦：多くの経験値(10~50+)\n  - レベル差≥10の簡単な挑戦：1経験値のみ\n  - 日常活動/会話/探索：少量の経験値(1~5)\n  - レベルアップに必要な経験値はレベルに応じて増加：推奨式 = レベル × 100\n`,
-                `  - 캐릭터 레벨에 가깝거나 더 강한 도전: 많은 경험치(10~50+)\n  - 레벨 차이 ≥10인 사소한 도전: 1 경험치만\n  - 일상 활동/대화/탐험: 소량의 경험치(1~5)\n  - 레벨업 필요 경험치는 레벨에 따라 증가: 권장 공식 = 레벨 × 100\n`,
-                `  - Испытание близкое к уровню персонажа или выше: больше опыта (10~50+)\n  - Разница уровней ≥10, тривиальное испытание: только 1 очко опыта\n  - Повседневные действия/диалог/исследование: немного опыта (1~5)\n  - Необходимый опыт растёт с уровнем: рекомендуемая формула = уровень × 100\n`
-            );
-        }
         if (sendCur) {
             const curConfig = this._getRpgCurrencyConfig();
             if (curConfig.denominations.length > 0) {
@@ -4883,7 +4821,7 @@ generateSystemPromptAddition() {
         const rpgActive = this.settings?.rpgMode &&
             (this.settings.sendRpgBars !== false || this.settings.sendRpgSkills !== false ||
              this.settings.sendRpgAttributes !== false || !!this.settings.sendRpgReputation ||
-             !!this.settings.sendRpgEquipment || !!this.settings.sendRpgLevel || !!this.settings.sendRpgCurrency ||
+             !!this.settings.sendRpgEquipment || !!this.settings.sendRpgCurrency ||
              !!this.settings.sendRpgStronghold);
         if (rpgActive) tags.push('<horaerpg>...</horaerpg>');
         const lang = this._getAiOutputLang();

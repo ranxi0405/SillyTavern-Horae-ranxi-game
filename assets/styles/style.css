@@ -8677,3 +8677,20 @@ body .horae-context-menu {
         width: 95% !important;
     }
 }
+
+
+/* S1.3d: HUD cultivation tags */
+.horae-rpg-hud-tags {
+    display: inline-flex;
+    gap: 4px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+.horae-rpg-hud-tag {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #c0c0c0;
+    white-space: nowrap;
+}
