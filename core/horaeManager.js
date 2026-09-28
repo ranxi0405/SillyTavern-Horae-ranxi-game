@@ -2570,17 +2570,60 @@ if (sendCharacters) {
         // skill（旧 4 字段 / 新 5 字段带 category）
         // 旧 4 字段：不产生 category 字段（由 StateStore 在新建时默认 other，在更新时保留原值）
         // 新 5 字段：合法 category 规范化，非法值归 other
+        // 特殊：category 为 craft / 六艺 / 六藝 → 兼容为六艺，写入 rpg.arts（不写入 rpg.skills）
         if (line.startsWith('skill:')) {
             const parts = line.substring(6).trim().split('|').map(s => s.trim());
             const VALID_CATEGORIES = ['main', 'attack', 'movement', 'body', 'spirit', 'secret', 'other'];
             const normCategory = (c) => (c && VALID_CATEGORIES.includes(c)) ? c : 'other';
+            const _isCraftCat = (c) => (c === 'craft' || c === '六艺' || c === '六藝');
+            const _extractCraftXp = (desc) => {
+                if (!desc || typeof desc !== 'string') return null;
+                const m = desc.match(/熟练度[:：\s]*(\d+)/);
+                if (!m) return null;
+                const n = Number(m[1]);
+                return Number.isSafeInteger(n) ? n : null;
+            };
             if (_uoS && parts.length >= 1) {
-                const sk = { owner: _uoName, name: parts[0], level: parts[1] || '', desc: parts[2] || '' };
-                if (parts[3]) sk.category = normCategory(parts[3]);
+                const owner = _uoName;
+                const name = parts[0];
+                const tier = parts[1] || '';
+                const descRaw = parts[2] || '';
+                const catRaw = parts[3];
+                if (_isCraftCat(catRaw)) {
+                    if (owner && name && tier) {
+                        if (!rpg.arts) rpg.arts = [];
+                        const art = { owner, name, tier };
+                        const xp = _extractCraftXp(descRaw);
+                        if (xp != null) art.xp = xp;
+                        rpg.arts.push(art);
+                    } else {
+                        console.warn('[Horae][skill|craft] 非法行，忽略:', line);
+                    }
+                    return;
+                }
+                const sk = { owner, name, level: tier, desc: descRaw };
+                if (catRaw) sk.category = normCategory(catRaw);
                 rpg.skills.push(sk);
             } else if (parts.length >= 2) {
-                const sk = { owner: parts[0], name: parts[1], level: parts[2] || '', desc: parts[3] || '' };
-                if (parts[4]) sk.category = normCategory(parts[4]);
+                const owner = parts[0];
+                const name = parts[1];
+                const tier = parts[2] || '';
+                const descRaw = parts[3] || '';
+                const catRaw = parts[4];
+                if (_isCraftCat(catRaw)) {
+                    if (owner && name && tier) {
+                        if (!rpg.arts) rpg.arts = [];
+                        const art = { owner, name, tier };
+                        const xp = _extractCraftXp(descRaw);
+                        if (xp != null) art.xp = xp;
+                        rpg.arts.push(art);
+                    } else {
+                        console.warn('[Horae][skill|craft] 非法行，忽略:', line);
+                    }
+                    return;
+                }
+                const sk = { owner, name, level: tier, desc: descRaw };
+                if (catRaw) sk.category = normCategory(catRaw);
                 rpg.skills.push(sk);
             }
             return;
