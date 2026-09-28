@@ -21876,6 +21876,25 @@ function _buildFactExtractionPrompt({ narrative, events, existingFacts, existing
 - 事实被推翻/失效 → invalidate
 - 无法确定 → add（宁可冗余，不可误删）
 
+⚠️【绝对禁止 supersede 的 predicate —— 天然多值，必须用 add】
+以下 predicate 天然支持多值，**新增值时强制使用 add**，禁止使用 supersede：
+- 关系（一个人可同时有：师父、好友、敌人、同门…）
+- 技艺（一个人可同时掌握：炼丹、炼器、阵法…）
+- 技能（一个人可同时会：青木诀、流云步、碎玉指…）
+- 天赋（一个人可有多个天赋）
+
+若判定需要使用 supersede 但 predicate 属于上述清单，**强制降级为 add**。
+仅在这些 predicate 的旧值**被摘要明确证明不再成立**时，才使用 invalidate（不是 supersede）。
+
+⚠️【supersede 的充分条件 —— 必须满足全部】
+使用 supersede 必须同时满足：
+1. predicate 属于单值类（非上述多值清单）
+2. 摘要**明确证明**旧值不再成立、新值取代旧值
+3. target 必须精确匹配已有 facts 中的某一条 active 记录
+
+**仅出现一个新的 object 不是 supersede 的充分条件**。
+如果无法判断新值是否取代旧值 → 使用 add。
+
 示例：
 <horaefacts>
 甲角色|门派|丙宗外门|public|add|||
@@ -21920,6 +21939,29 @@ appointment|某日某地之约|open|critical|public|甲角色|X年X月X日
 - 主角的固定能力（如"过目不忘"这类天赋）
 - 主角已有的基础属性值（五维、境界、灵根）
 只提取剧情中"新出现"或"发生变化"的事实。
+
+【State-authoritative predicate —— 永不提取】
+以下 predicate 由 RPG State 每回合实时管理，永不提取为 Fact：
+- 境界（由 rpg.realm 管理）
+- 修为（由 rpg.cultivation 管理）
+- 神识（由 rpg.spirit 管理）
+- 寿元（由 rpg.lifespan 管理）
+- 年龄（由 rpg.age 管理）
+- 持有物（由 rpg.equipment / items 管理，见下方"物品永不提取"）
+
+注意：这里的"永不提取"是指"不要把这些当作长期 Fact 提取"，
+但你可以在叙事中正常引用这些信息（AI 每回合从 State 快照读取）。
+
+不应提取的示例：
+❌ 冉汐|境界|炼气后期       ← State 已管理
+❌ 冉汐|神识|清明境         ← State 已管理
+❌ 冉汐|持有物|青霜剑       ← 物品系统管理
+
+应提取的示例（Fact 独有，不属 State）：
+✅ 冉汐|门派|落霞宗
+✅ 冉汐|身份|外门弟子
+✅ 冉汐|灵根|杂灵根
+✅ 冉汐|性别|女
 
 【提取规则】
 1. 只提取"长期结论"，不提取"过程"和"临时状态"
@@ -21977,6 +22019,14 @@ appointment|某日某地之约|open|critical|public|甲角色|X年X月X日
    也不要为了达到数量要求而臆造事实。
    有多少明确事实就提取多少。
 
+⚠️【已有 facts 多值证据解读】
+观察【已有 facts】里的记录：
+- 如果同一个 subject + predicate 出现**多个不同的 object** → 该 predicate 是多值 predicate，
+  新增值时**必须用 add**。
+- 如果同一个 subject + predicate **只有一条** active 记录 → 无法仅凭此判断是单值还是多值，
+  最终判断依据是"新值是否与旧值可同时成立"。
+- **不要让程序或规则根据 predicate 名字猜单值/多值**，最终由语义判断。
+
 【已有 facts（仅作为上下文参考，不是过滤器）】
 ${existingStr}
 
@@ -22031,6 +22081,16 @@ If the narrative hints at these, skip. Do not summarize, imply, or paraphrase.
 4. No temporary states
 5. No duplicates with existing facts below
 6. Extract as many as there are, no upper limit
+
+【State-authoritative predicates — NEVER extract】
+The following are managed by RPG State each turn; do NOT extract as Facts:
+realm, cultivation, spirit, lifespan, age, held_items.
+(Facts unique to narration like sect/identity/spirit_root/gender MUST still be extracted.)
+
+【NEVER use supersede on multi-value predicates】
+relation / craft / skill / talent — MUST use add for new values.
+supersede requires: (1) single-value predicate, (2) explicit replacement in narrative, (3) exact target match.
+A new object alone is NOT sufficient for supersede.
 
 【Existing facts】
 ${existingStr}
@@ -22155,8 +22215,56 @@ function _parseFactsResponse(raw) {
  * 自动从 L1 摘要提取 facts 并 commit
  * 由 checkAutoSummary 在 L1 成功提交后触发（fire-and-forget）
  */
+/** 为提取的 fact 填充溯源字段（不让 AI 猜） */
+function _enrichFactsWithSource(facts, entry) {
+    if (!Array.isArray(facts) || !entry) return facts;
+
+    const events = entry.originalEvents || [];
+    const sourceEventIds = events
+        .filter(e => typeof e.msgIdx === 'number')
+        .map(e => 'm' + e.msgIdx + '_e' + (e.evtIdx ?? '?'));
+    const since = events[0]?.timestamp?.story_date || null;
+    const sourceTag = 'summary:' + entry.id;
+
+    return facts.map(f => ({
+        ...f,
+        since: f.since || since,
+        sourceEventIds: (Array.isArray(f.sourceEventIds) && f.sourceEventIds.length > 0)
+            ? f.sourceEventIds
+            : sourceEventIds,
+        source: f.source || sourceTag,
+    }));
+}
+
+/** 懒迁移：一次性 normalizeLegacy + _factsVersion 标记 */
+function _migrateFactsIfNeeded() {
+    try {
+        const chat = horaeManager.getChat();
+        if (!chat?.length) return { migrated: 0, version: null };
+        if (!chat[0].horae_meta) return { migrated: 0, version: null };
+
+        const meta = chat[0].horae_meta;
+        const CUR_VERSION = 'v0.4';
+        if (meta._factsVersion === CUR_VERSION) {
+            return { migrated: 0, version: CUR_VERSION, skipped: true };
+        }
+
+        const factStore = new FactStore(horaeManager);
+        const migrated = factStore.normalizeLegacy();
+        meta._factsVersion = CUR_VERSION;
+        console.log('[Horae][Fact] 迁移完成: normalizeLegacy=' + migrated + ', version=' + CUR_VERSION);
+        try { getContext().saveChat(); } catch (_) {}
+        return { migrated, version: CUR_VERSION };
+    } catch (e) {
+        console.warn('[Horae][Fact] 迁移失败:', e);
+        return { migrated: 0, version: null, error: String(e) };
+    }
+}
+
 async function _autoExtractFactsFromSummary(summaryId) {
     try {
+        _migrateFactsIfNeeded();
+
         const chat = horaeManager.getChat();
         if (!chat?.length) return;
 
@@ -22217,7 +22325,8 @@ async function _autoExtractFactsFromSummary(summaryId) {
             return;
         }
 
-        const results = factStore.commitBatch(facts);
+        const enrichedFacts = _enrichFactsWithSource(facts, entry);
+        const results = factStore.commitBatch(enrichedFacts);
         const okCount = results.filter(r => !r._error).length;
 
         // 提交 threads
@@ -22285,5 +22394,6 @@ async function _testFactExtraction(summaryId) {
 }
 
 window._horaeTestFactExtraction = _testFactExtraction;
+window._horaeMigrateFacts = _migrateFactsIfNeeded;
 window._horaeTestAutoFact = _autoExtractFactsFromSummary;
 console.log('[Horae] Fact 提取测试已就绪：window._horaeTestFactExtraction()');

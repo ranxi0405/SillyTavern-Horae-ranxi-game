@@ -1907,6 +1907,11 @@ if (sendCharacters) {
         return actors;
     }
 
+    /** State-authoritative predicate —— 不从 Fact 注入（由 State 段独立提供） */
+    static _STATE_AUTHORITATIVE_PREDICATES = new Set([
+        '境界', '修为', '神识', '寿元', '年龄', '持有物', '物品',
+    ]);
+
     /** 生成"已知事实"段（从 chat[0].horae_meta.facts 读取 active 条目） */
     _generateFactsSection(relevantActors = null) {
         const facts = this.getChat()?.[0]?.horae_meta?.facts || [];
@@ -1915,6 +1920,8 @@ if (sendCharacters) {
 
         // Relevance 过滤
         const filtered = active.filter(f => {
+            // State-authoritative predicate 不注入（避免与 State 段重复）
+            if (HoraeManager._STATE_AUTHORITATIVE_PREDICATES.has(f.predicate)) return false;
             // gm_only 总是注入
             if (f.visibility === 'gm_only') return true;
             // 无 RelevantActors 时全注入（保底）
