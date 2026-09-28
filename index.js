@@ -7512,6 +7512,48 @@ function _syncRpgTabVisibility() {
 }
 
 /** 更新 RPG 分页（角色卡模式，按当前消息位置快照） */
+/** 渲染 RPG tab 里的"角色固有设定"面板（只读） */
+function renderIdentityPanel() {
+    const container = document.getElementById('horae-rpg-identity-area');
+    const section = document.getElementById('horae-rpg-identity-section');
+    if (!container || !section) return;
+
+    const chat = horaeManager.getChat();
+    const id = chat?.[0]?.horae_meta?.identity;
+
+    if (!id || isIdentityEmpty(id)) {
+        container.style.display = 'none';
+        section.innerHTML = '';
+        return;
+    }
+
+    container.style.display = '';
+
+    const rows = [];
+    if (id.spiritRoot) rows.push([t('rpg.identitySpiritRoot'), id.spiritRoot]);
+    if (id.constitution) rows.push([t('rpg.identityConstitution'), id.constitution]);
+    if (Array.isArray(id.talents) && id.talents.length > 0) rows.push([t('rpg.identityTalents'), id.talents.join(' / ')]);
+    if (id.bloodline) rows.push([t('rpg.identityBloodline'), id.bloodline]);
+    if (Array.isArray(id.arts) && id.arts.length > 0) rows.push([t('rpg.identityArts'), id.arts.join(' / ')]);
+    if (id.background) rows.push([t('rpg.identityBackground'), id.background]);
+
+    if (rows.length === 0) {
+        container.style.display = 'none';
+        section.innerHTML = '';
+        return;
+    }
+
+    let html = '<div class="horae-rpg-identity-list">';
+    for (const [label, val] of rows) {
+        html += '<div class="horae-rpg-identity-row">'
+             + '<span class="horae-rpg-identity-label">' + escapeHtml(label) + '</span>'
+             + '<span class="horae-rpg-identity-value">' + escapeHtml(String(val)) + '</span>'
+             + '</div>';
+    }
+    html += '</div>';
+    section.innerHTML = html;
+}
+
 function updateRpgDisplay() {
     if (!settings.rpgMode) return;
     const rpg = horaeManager.getRpgStateAt(0);
@@ -7549,6 +7591,8 @@ function updateRpgDisplay() {
     const barsSection = document.getElementById('horae-rpg-bars-section');
     const charCardsSection = document.getElementById('horae-rpg-char-cards');
     if (!barsSection || !charCardsSection) return;
+
+    renderIdentityPanel();
 
     // 收集所有角色
     const allNames = new Set([
