@@ -11,12 +11,15 @@ import { tNodeForLang, detectEffectiveAiLang } from './i18n.js';
 import { getPromptDefaultSync } from './promptDefaults.js';
 
 const DB_NAME = 'HoraeVectors';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_NAME = 'vectors';
 const SNAPSHOT_STORE = 'memorySnapshots';
+const SUMMARY_STORE = 'summaryVectors';
+const THREAD_STORE = 'threadVectors';
 const RECALL_CACHE_LIMIT = 16;
 const SNAPSHOT_FORMAT = 'horae-memory-snapshot';
 const SNAPSHOT_VERSION = '1.0';
+const SUMMARY_MESSAGE_SIM_DIFF_THRESHOLD = 0.15;
 
 const MODEL_CONFIG = {
     'Xenova/bge-small-zh-v1.5': { dimensions: 512, prefix: null },
@@ -45,6 +48,8 @@ function isMetaExcluded(meta) {
 
 export class VectorManager {
     constructor() {
+        this.summaryVectors = new Map();
+        this.threadVectors = new Map();
         this.worker = null;
         // 结构化标签需排除在 termCounts 外，避免污染 IDF
         if (!VectorManager._STRUCT_TAGS_SET) {
@@ -258,6 +263,8 @@ export class VectorManager {
         try {
             await this._openDB();
             await this._loadSnapshotsForChat(chatId);
+            await this._loadSummariesForChat(chatId, chat);
+            await this._loadThreadsForChat(chatId, chat);
             const stored = await this._loadAllVectors();
             const staleKeys = [];
             for (const item of stored) {
@@ -285,6 +292,7 @@ export class VectorManager {
                 for (const idx of staleKeys) await this._deleteVector(idx);
                 console.log(`[Horae Vector] 清理了 ${staleKeys.length} 条过期/分支外向量`);
             }
+            await this.syncSummaryThreadsFromChat(chat);
             const snapCount = this.snapshots.reduce((a, s) => a + s.items.length, 0);
             const snapTxt = snapCount > 0 ? ` (+${snapCount} 条历史记忆, ${this.snapshots.length} 份快照)` : '';
             console.log(`[Horae Vector] 已加载 ${this.vectors.size} 条向量 (chatId: ${chatId})${snapTxt}`);
@@ -356,6 +364,67 @@ export class VectorManager {
     // ========================================
     // 索引操作
     // ========================================
+
+    buildSummaryVectorDocument(summary) {
+        if (!summary?.summaryText) return '';
+        if (summary.active === false) return '';
+        return summary.summaryText;
+    }
+
+    buildThreadVectorDocument(thread) {
+        if (!thread?.title) return '';
+        const ACTIVE = new Set(['open', 'progressing', 'blocked']);
+        if (!ACTIVE.has(thread.status)) return '';
+        const parts = [thread.title];
+        if (thread.notes) parts.push(thread.notes);
+        if (Array.isArray(thread.participants) && thread.participants.length) parts.push(thread.participants.join(' '));
+        return parts.join(' | ');
+    }
+
+    async syncSummaryThreadsFromChat(chat) {
+        if (!this.isReady || !this.chatId || !chat?.length) return;
+        const meta = chat[0]?.horae_meta;
+        if (!meta) return;
+        const liveSum = new Set();
+        for (const s of (meta.autoSummaries || [])) {
+            if (!s?.id || s.active === false) continue;
+            const doc = this.buildSummaryVectorDocument(s);
+            if (!doc) continue;
+            const hash = this._hashString(doc);
+            const ex = this.summaryVectors.get(s.id);
+            if (ex && ex.hash === hash) { liveSum.add(s.id); continue; }
+            const res = await this._embed([this._prepareText(doc, false)]);
+            if (!res?.vectors?.[0]) continue;
+            const entry = { vector: res.vectors[0], hash, document: doc,
+                coveredIndices: Array.isArray(s.coveredIndices) ? [...s.coveredIndices] : [],
+                depth: s.depth || 1 };
+            this.summaryVectors.set(s.id, entry);
+            await this._saveSummaryVector(s.id, entry);
+            liveSum.add(s.id);
+        }
+        for (const [id] of this.summaryVectors) {
+            if (!liveSum.has(id)) { this.summaryVectors.delete(id); await this._deleteSummaryVector(id); }
+        }
+        const liveThr = new Set();
+        for (const t of (meta.threads || [])) {
+            if (!t?.id) continue;
+            const doc = this.buildThreadVectorDocument(t);
+            if (!doc) continue;
+            const hash = this._hashString(doc);
+            const ex = this.threadVectors.get(t.id);
+            if (ex && ex.hash === hash) { liveThr.add(t.id); continue; }
+            const res = await this._embed([this._prepareText(doc, false)]);
+            if (!res?.vectors?.[0]) continue;
+            const entry = { vector: res.vectors[0], hash, document: doc, status: t.status };
+            this.threadVectors.set(t.id, entry);
+            await this._saveThreadVector(t.id, entry);
+            liveThr.add(t.id);
+        }
+        for (const [id] of this.threadVectors) {
+            if (!liveThr.has(id)) { this.threadVectors.delete(id); await this._deleteThreadVector(id); }
+        }
+        this.clearRecallCache('syncSummaryThreads');
+    }
 
     async addMessage(messageIndex, meta) {
         if (!this.isReady || !this.chatId) return;
@@ -465,6 +534,21 @@ export class VectorManager {
     }
 
     async clearIndex() {
+        // 同时清理 summary / thread store
+        try {
+            await this._openDB();
+            const _clearStore = (storeName) => new Promise((resolve) => {
+                const tx = this.db.transaction(storeName, 'readwrite');
+                const req = tx.objectStore(storeName).index('chatId').openCursor(this.chatId);
+                req.onsuccess = (e) => { const c = e.target.result; if (c) { c.delete(); c.continue(); } };
+                tx.oncomplete = resolve;
+                tx.onerror = resolve;
+            });
+            await _clearStore(SUMMARY_STORE);
+            await _clearStore(THREAD_STORE);
+        } catch (_) {}
+        this.summaryVectors.clear();
+        this.threadVectors.clear();
         this.vectors.clear();
         this.termCounts.clear();
         this.totalDocuments = 0;
@@ -571,6 +655,21 @@ export class VectorManager {
             if (sim >= threshold) { scored.push(hit); currentHit++; }
         }
 
+        for (const f of this._iterateSummaryEntries()) {
+            const sim = this._dotProduct(queryVec, f.entry.vector);
+            if (sim >= threshold) {
+                scored.push({ summaryId: f.summaryId, similarity: sim, document: f.entry.document,
+                    source: 'summary', coveredIndices: f.entry.coveredIndices, depth: f.entry.depth });
+            }
+        }
+        for (const f of this._iterateThreadEntries()) {
+            const sim = this._dotProduct(queryVec, f.entry.vector);
+            if (sim >= threshold) {
+                scored.push({ threadId: f.threadId, similarity: sim, document: f.entry.document,
+                    source: 'thread', status: f.entry.status });
+            }
+        }
+
         // 快照与当前对话同池竞争：相同阈值、相同打分逻辑，仅以 snapKey 区分来源
         for (const f of snapEntries) {
             const sim = this._dotProduct(queryVec, f.entry.vector);
@@ -604,15 +703,38 @@ export class VectorManager {
         if (!pureMode) this._debug(`[Horae Vector] 频率过滤后: ${adjusted.length} 条`);
 
         const deduped = this._deduplicateResults(adjusted);
-        this._debug(`[Horae Vector] 去重后: ${deduped.length} 条`);
+        const dedupedFinal = this._dedupSummaryVsMessage(deduped);
+        this._debug(`[Horae Vector] 去重后: ${dedupedFinal.length} 条`);
 
-        return deduped.slice(0, topK);
+        return dedupedFinal.slice(0, topK);
     }
 
     /**
      * 噪声文档惩罚（IDF）
      * 平均 IDF 过低说明文档由必然高频词主导（如主角名+场景），略上调阈值
      */
+    _dedupSummaryVsMessage(results) {
+        if (!results?.length) return results;
+        const summaryHits = results.filter(r => r.source === 'summary');
+        if (summaryHits.length === 0) return results;
+        const coveredBySummary = new Map();
+        for (const sh of summaryHits) {
+            const sv = this.summaryVectors.get(sh.summaryId);
+            if (!sv?.coveredIndices?.length) continue;
+            for (const idx of sv.coveredIndices) {
+                const ex = coveredBySummary.get(idx);
+                if (!ex || sh.similarity > ex.similarity) coveredBySummary.set(idx, sh);
+            }
+        }
+        if (coveredBySummary.size === 0) return results;
+        return results.filter(r => {
+            if (r.source === 'summary' || r.source === 'thread' || r.snapKey) return true;
+            const cov = coveredBySummary.get(r.messageIndex);
+            if (!cov) return true;
+            return (r.similarity - cov.similarity) >= SUMMARY_MESSAGE_SIM_DIFF_THRESHOLD;
+        });
+    }
+
     _adjustThresholdByFrequency(results, baseThreshold) {
         if (results.length < 2 || this.totalDocuments < 10) return results;
 
@@ -1948,6 +2070,8 @@ export class VectorManager {
         const memTag = labels.memoryTag || '[历史记忆]';
         const userTag = labels.userTag || '[USER]';
         const aiTag = labels.aiTag || '[AI]';
+        const _sumMap = (chat[0]?.horae_meta?.autoSummaries || []).reduce((m, s) => (m[s.id] = s, m), {});
+        const _thrMap = (chat[0]?.horae_meta?.threads || []).reduce((m, t) => (m[t.id] = t, m), {});
 
         for (let rank = 0; rank < results.length; rank++) {
             const r = results[rank];
@@ -1955,6 +2079,19 @@ export class VectorManager {
             const meta = snapEntry ? snapEntry.meta : chat[r.messageIndex]?.horae_meta;
             if (isMetaExcluded(meta)) continue;
 
+            if (r.summaryId) {
+                const s = _sumMap[r.summaryId];
+                const rng = s?.range ? `${s.range[0]}-${s.range[1]}` : '?';
+                lines.push(`[摘要 L${s?.depth || 1} | ${rng}] ${s?.summaryText || r.document}`);
+                continue;
+            }
+            if (r.threadId) {
+                const t = _thrMap[r.threadId];
+                const parts = ['[未完成事务]', t?.type || '?', t?.title || r.document, `(${t?.status || '?'})`];
+                if (t?.participants?.length) parts.push('参与: ' + t.participants.join(','));
+                lines.push(parts.join(' '));
+                continue;
+            }
             const prefix = snapEntry ? `${memTag} ` : '';
             const idLabel = snapEntry ? `#${snapEntry.originalIndex >= 0 ? snapEntry.originalIndex : '?'}` : `#${r.messageIndex}`;
             const isFullText = fullTextCount > 0 && rank < fullTextCount && r.similarity >= fullTextThreshold;
@@ -2019,6 +2156,18 @@ export class VectorManager {
         }
 
         return lines.length > 1 ? lines.join('\n') : '';
+    }
+
+    _iterateSummaryEntries() {
+        const out = [];
+        for (const [summaryId, entry] of this.summaryVectors) out.push({ summaryId, entry });
+        return out;
+    }
+
+    _iterateThreadEntries() {
+        const out = [];
+        for (const [threadId, entry] of this.threadVectors) out.push({ threadId, entry });
+        return out;
     }
 
     _getSnapshotEntry(snapKey) {
@@ -2463,6 +2612,14 @@ export class VectorManager {
                 // V1→V2：新增独立 store 存放快照，按 chatId 索引
                 if (event.oldVersion < 2 && !db.objectStoreNames.contains(SNAPSHOT_STORE)) {
                     const snap = db.createObjectStore(SNAPSHOT_STORE, { keyPath: 'key' });
+                }
+                if (event.oldVersion < 3 && !db.objectStoreNames.contains(SUMMARY_STORE)) {
+                    const sm = db.createObjectStore(SUMMARY_STORE, { keyPath: 'key' });
+                    sm.createIndex('chatId', 'chatId', { unique: false });
+                }
+                if (event.oldVersion < 3 && !db.objectStoreNames.contains(THREAD_STORE)) {
+                    const th = db.createObjectStore(THREAD_STORE, { keyPath: 'key' });
+                    th.createIndex('chatId', 'chatId', { unique: false });
                     snap.createIndex('chatId', 'chatId', { unique: false });
                 }
             };
@@ -2514,6 +2671,66 @@ export class VectorManager {
         });
     }
 
+    async _saveSummaryVector(summaryId, data) {
+        await this._openDB();
+        const key = this.chatId + '_sum_' + summaryId;
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction(SUMMARY_STORE, 'readwrite');
+            tx.objectStore(SUMMARY_STORE).put({ key, chatId: this.chatId, summaryId,
+                vector: data.vector, hash: data.hash, document: data.document,
+                coveredIndices: data.coveredIndices, depth: data.depth });
+            tx.oncomplete = resolve;
+            tx.onerror = () => reject(tx.error);
+        });
+    }
+
+    async _saveThreadVector(threadId, data) {
+        await this._openDB();
+        const key = this.chatId + '_thr_' + threadId;
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction(THREAD_STORE, 'readwrite');
+            tx.objectStore(THREAD_STORE).put({ key, chatId: this.chatId, threadId,
+                vector: data.vector, hash: data.hash, document: data.document, status: data.status });
+            tx.oncomplete = resolve;
+            tx.onerror = () => reject(tx.error);
+        });
+    }
+
+    async _loadSummariesForChat(chatId, chat) {
+        await this._openDB();
+        const stored = await new Promise((resolve, reject) => {
+            const tx = this.db.transaction(SUMMARY_STORE, 'readonly');
+            const req = tx.objectStore(SUMMARY_STORE).index('chatId').getAll(chatId);
+            req.onsuccess = () => resolve(req.result || []);
+            req.onerror = () => reject(req.error);
+        });
+        const liveIds = new Set((chat[0]?.horae_meta?.autoSummaries || [])
+            .filter(s => s?.id && s.active !== false).map(s => s.id));
+        for (const item of stored) {
+            if (!liveIds.has(item.summaryId)) { await this._deleteSummaryVector(item.summaryId); continue; }
+            this.summaryVectors.set(item.summaryId, { vector: item.vector, hash: item.hash,
+                document: item.document, coveredIndices: item.coveredIndices || [], depth: item.depth || 1 });
+        }
+    }
+
+    async _loadThreadsForChat(chatId, chat) {
+        await this._openDB();
+        const stored = await new Promise((resolve, reject) => {
+            const tx = this.db.transaction(THREAD_STORE, 'readonly');
+            const req = tx.objectStore(THREAD_STORE).index('chatId').getAll(chatId);
+            req.onsuccess = () => resolve(req.result || []);
+            req.onerror = () => reject(req.error);
+        });
+        const ACTIVE = new Set(['open', 'progressing', 'blocked']);
+        const liveIds = new Set((chat[0]?.horae_meta?.threads || [])
+            .filter(t => t?.id && ACTIVE.has(t.status)).map(t => t.id));
+        for (const item of stored) {
+            if (!liveIds.has(item.threadId)) { await this._deleteThreadVector(item.threadId); continue; }
+            this.threadVectors.set(item.threadId, { vector: item.vector, hash: item.hash,
+                document: item.document, status: item.status });
+        }
+    }
+
     async _deleteVector(messageIndex) {
         await this._openDB();
         const normalizedIdx = this._normalizeMessageIndex(messageIndex);
@@ -2522,6 +2739,28 @@ export class VectorManager {
         return new Promise((resolve, reject) => {
             const tx = this.db.transaction(STORE_NAME, 'readwrite');
             tx.objectStore(STORE_NAME).delete(key);
+            tx.oncomplete = resolve;
+            tx.onerror = () => reject(tx.error);
+        });
+    }
+
+    async _deleteSummaryVector(summaryId) {
+        await this._openDB();
+        const key = this.chatId + '_sum_' + summaryId;
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction(SUMMARY_STORE, 'readwrite');
+            tx.objectStore(SUMMARY_STORE).delete(key);
+            tx.oncomplete = resolve;
+            tx.onerror = () => reject(tx.error);
+        });
+    }
+
+    async _deleteThreadVector(threadId) {
+        await this._openDB();
+        const key = this.chatId + '_thr_' + threadId;
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction(THREAD_STORE, 'readwrite');
+            tx.objectStore(THREAD_STORE).delete(key);
             tx.oncomplete = resolve;
             tx.onerror = () => reject(tx.error);
         });

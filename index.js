@@ -22344,6 +22344,14 @@ async function _autoExtractFactsFromSummary(summaryId) {
         entry._factsExtractedCount = okCount;
         entry._threadsExtractedCount = threadOkCount;
 
+        // S1.6: 同步 summary / thread 到向量索引（幂等，不阻塞主流程）
+        try {
+            const vm = (typeof vectorManager !== 'undefined' && vectorManager) ? vectorManager : null;
+            if (vm && typeof vm.syncSummaryThreadsFromChat === 'function') {
+                await vm.syncSummaryThreadsFromChat(chat).catch(() => {});
+            }
+        } catch (_) {}
+
         try { await getContext().saveChat(); } catch (_) {}
     } catch (e) {
         console.warn('[Horae][Fact] 自动提取失败:', e);
