@@ -21967,7 +21967,7 @@ appointment|某日某地之约|open|critical|public|甲角色|X年X月X日
 1. 只提取"长期结论"，不提取"过程"和"临时状态"
 2. 属性优先使用以下词汇（仅供参考，不是固定枚举）：
    身份、境界、灵根、性别、年龄、种族、职业、门派、
-   位置、住处、天赋、外貌、特征、能力、技艺、关系、目标、处境
+   位置、住处、天赋、外貌、特征、能力、技艺、关系、目标
    应根据原文语义选择最准确的 predicate。
    不要为了匹配列表而强行改变事实含义。
 
@@ -22232,7 +22232,7 @@ function _enrichFactsWithSource(facts, entry) {
         sourceEventIds: (Array.isArray(f.sourceEventIds) && f.sourceEventIds.length > 0)
             ? f.sourceEventIds
             : sourceEventIds,
-        source: f.source || sourceTag,
+        source: sourceTag,
     }));
 }
 
