@@ -7,7 +7,7 @@
  */
 
 import { renderExtensionTemplateAsync, getContext, extension_settings } from '/scripts/extensions.js';
-import { getSlideToggleOptions, saveSettingsDebounced, eventSource, event_types, doNewChat } from '/script.js';
+import { getSlideToggleOptions, saveSettingsDebounced, eventSource, event_types, doNewChat, getRequestHeaders } from '/script.js';
 import { slideToggle } from '/lib.js';
 
 import { horaeManager, createEmptyMeta, getItemBaseName } from './core/horaeManager.js';
@@ -1918,7 +1918,7 @@ function setCharacterTables(tables) {
 
     fetch('/api/characters/merge-attributes', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getRequestHeaders(),
         body: JSON.stringify({
             avatar: chars[charId].avatar,
             data: { extensions: { horae: { charTables: charData.extensions.horae.charTables } } }
@@ -15280,7 +15280,7 @@ async function _writeCardIdentity(identity) {
     try {
         const resp = await fetch('/api/characters/merge-attributes', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getRequestHeaders(),
             body: JSON.stringify({
                 avatar: char.avatar,
                 data: { extensions: { horae: { identity: normalized } } },
@@ -15310,7 +15310,7 @@ async function _clearCardIdentity() {
     try {
         const resp = await fetch('/api/characters/merge-attributes', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getRequestHeaders(),
             body: JSON.stringify({
                 avatar: char.avatar,
                 data: { extensions: { horae: { identity: null } } },
@@ -15389,7 +15389,7 @@ async function _writeCardProfile(payload) {
     try {
         const resp = await fetch('/api/characters/merge-attributes', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getRequestHeaders(),
             body: JSON.stringify({
                 avatar: char.avatar,
                 data: { extensions: { horae: { profile } } },
@@ -15414,7 +15414,7 @@ async function _clearCardProfile() {
     try {
         const resp = await fetch('/api/characters/merge-attributes', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getRequestHeaders(),
             body: JSON.stringify({
                 avatar: char.avatar,
                 data: { extensions: { horae: { profile: null } } },
