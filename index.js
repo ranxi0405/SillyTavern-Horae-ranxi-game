@@ -7531,13 +7531,13 @@ function renderIdentityPanel() {
 
     const rows = [];
     const _sr = id.spiritRootDisplay || id.spiritRoot;
-    if (_sr) rows.push([t('rpg.identitySpiritRoot'), _sr]);
+    if (_sr) rows.push(['fa-seedling', t('rpg.identitySpiritRoot'), _sr, '']);
     const _cs = id.constitutionDisplay || id.constitution;
-    if (_cs) rows.push([t('rpg.identityConstitution'), _cs]);
-    if (id.xianZi) rows.push([t('rpg.identityXianZi'), id.xianZi]);
-    if (Array.isArray(id.talents) && id.talents.length > 0) rows.push([t('rpg.identityTalents'), id.talents.join(' / ')]);
-    if (id.bloodline) rows.push([t('rpg.identityBloodline'), id.bloodline]);
-    if (id.background) rows.push([t('rpg.identityBackground'), id.background]);
+    if (_cs) rows.push(['fa-shield', t('rpg.identityConstitution'), _cs, '']);
+    if (id.xianZi) rows.push(['fa-gem', t('rpg.identityXianZi'), id.xianZi, '']);
+    if (Array.isArray(id.talents) && id.talents.length > 0) rows.push(['fa-star', t('rpg.identityTalents'), id.talents.join(' / '), '']);
+    if (id.bloodline) rows.push(['fa-dna', t('rpg.identityBloodline'), id.bloodline, 'horae-rpg-field-icon--bloodline']);
+    if (id.background) rows.push(['fa-house', t('rpg.identityBackground'), id.background, '']);
 
     if (rows.length === 0) {
         container.style.display = 'none';
@@ -7545,14 +7545,15 @@ function renderIdentityPanel() {
         return;
     }
 
-    let html = '<div class="horae-rpg-identity-list">';
-    for (const [label, val] of rows) {
-        html += '<div class="horae-rpg-identity-row">'
-             + '<span class="horae-rpg-identity-label">' + escapeHtml(label) + '</span>'
-             + '<span class="horae-rpg-identity-value">' + escapeHtml(String(val)) + '</span>'
+    let html = '<div class="horae-rpg-card"><div class="horae-rpg-identity-list">';
+    for (const [icon, label, val, extraCls] of rows) {
+        html += '<div class="horae-rpg-field-row">'
+             + '<i class="fa-solid ' + icon + ' horae-rpg-field-icon ' + escapeHtml(extraCls) + '"></i>'
+             + '<span class="horae-rpg-field-label">' + escapeHtml(label) + '</span>'
+             + '<span class="horae-rpg-field-val">' + escapeHtml(String(val)) + '</span>'
              + '</div>';
     }
-    html += '</div>';
+    html += '</div></div>';
     section.innerHTML = html;
 }
 
@@ -7660,20 +7661,28 @@ function updateRpgDisplay() {
                 const cur = rpg.cultivation[0];
                 const max = rpg.cultivation[1];
                 if (Number.isSafeInteger(cur) && Number.isSafeInteger(max)) {
-                    html += `<div class="horae-rpg-overview-section"><div class="horae-rpg-overview-row"><span class="horae-rpg-overview-label">${t('ui.rpgOverviewCultivation')}</span><span class="horae-rpg-overview-val">${cur}/${max}</span></div></div>`;
+                    html += `<div class="horae-rpg-card"><div class="horae-rpg-field-row"><i class="fa-solid fa-droplet horae-rpg-field-icon"></i><span class="horae-rpg-field-label">${t('ui.rpgOverviewCultivation')}</span><span class="horae-rpg-field-val">${cur}/${max}</span></div></div>`;
                 }
             }
         }
 
         // ── 五维属性（缺失值显示 ?）──
         if (attrCfg.length > 0) {
+            const _ATTR_ICON_MAP = {
+                'zizhi':    'fa-medal',
+                'wuxing':   'fa-spa',
+                'shenlin':  'fa-fist-raised',
+                'daoxin':   'fa-yin-yang',
+                'xianyuan': 'fa-feather',
+            };
             let attrHtml = '';
             for (const a of attrCfg) {
                 const v = attrs[a.key];
                 const vStr = (v === undefined || v === null) ? '?' : String(v);
-                attrHtml += `<div class="horae-rpg-overview-row"><span class="horae-rpg-overview-label">${escapeHtml(a.name)}</span><span class="horae-rpg-overview-val">${escapeHtml(vStr)}</span></div>`;
+                const _icon = _ATTR_ICON_MAP[a.key] || 'fa-circle-dot';
+                attrHtml += `<div class="horae-rpg-field-row"><i class="fa-solid ${_icon} horae-rpg-field-icon"></i><span class="horae-rpg-field-label">${escapeHtml(a.name)}</span><span class="horae-rpg-field-val">${escapeHtml(vStr)}</span></div>`;
             }
-            html += `<div class="horae-rpg-overview-section">${attrHtml}</div>`;
+            html += `<div class="horae-rpg-card">${attrHtml}</div>`;
         }
 
         html += '</div>';
@@ -7700,13 +7709,49 @@ function updateRpgDisplay() {
         const xpLabel = t('ui.rpgOverviewSpiritXp');
 
         const CANONICAL_ARTS = [
-            { stateKey: '炼丹', i18nKey: 'ui.rpgArtsAlchemy' },
-            { stateKey: '炼器', i18nKey: 'ui.rpgArtsSmithing' },
-            { stateKey: '符箓', i18nKey: 'ui.rpgArtsTalisman' },
-            { stateKey: '阵法', i18nKey: 'ui.rpgArtsFormation' },
-            { stateKey: '御兽', i18nKey: 'ui.rpgArtsBeast' },
-            { stateKey: '灵植', i18nKey: 'ui.rpgArtsHerb' },
+            { stateKey: '炼丹', i18nKey: 'ui.rpgArtsAlchemy',   icon: 'fa-flask' },
+            { stateKey: '炼器', i18nKey: 'ui.rpgArtsSmithing',  icon: 'fa-hammer' },
+            { stateKey: '符箓', i18nKey: 'ui.rpgArtsTalisman',  icon: 'fa-scroll' },
+            { stateKey: '阵法', i18nKey: 'ui.rpgArtsFormation', icon: 'fa-shapes' },
+            { stateKey: '御兽', i18nKey: 'ui.rpgArtsBeast',     icon: 'fa-paw' },
+            { stateKey: '灵植', i18nKey: 'ui.rpgArtsHerb',      icon: 'fa-seedling' },
         ];
+        const _buildArtsRow = (icon, label, data) => {
+            if (!data) {
+                return `<div class="horae-rpg-arts-row">`
+                     + `<i class="fa-solid ${icon} horae-rpg-arts-icon"></i>`
+                     + `<span class="horae-rpg-arts-label">${escapeHtml(label)}</span>`
+                     + `<div class="horae-rpg-arts-bar"></div>`
+                     + `<span class="horae-rpg-arts-tier">${escapeHtml(untrained)}</span>`
+                     + `<span class="horae-rpg-arts-val">——</span>`
+                     + `</div>`;
+            }
+            let seg = null;
+            for (let gi = 0; gi < _ART_GRADE_RANGES.length; gi++) {
+                const g = _ART_GRADE_RANGES[gi];
+                if (typeof data.xp === 'number' && data.xp >= g.min && data.xp <= g.max) { seg = g; break; }
+            }
+            let pct = 0;
+            let valStr = '';
+            if (seg && seg.max === Infinity) {
+                pct = 100;
+                valStr = data.xp + '+';
+            } else if (seg && typeof data.xp === 'number') {
+                pct = Math.min(100, Math.round(data.xp / seg.max * 100));
+                valStr = data.xp + '/' + seg.max;
+            } else if (typeof data.xp === 'number') {
+                valStr = String(data.xp);
+            } else {
+                valStr = '';
+            }
+            return `<div class="horae-rpg-arts-row">`
+                 + `<i class="fa-solid ${icon} horae-rpg-arts-icon"></i>`
+                 + `<span class="horae-rpg-arts-label">${escapeHtml(label)}</span>`
+                 + `<div class="horae-rpg-arts-bar"><div class="horae-rpg-arts-bar-fill" style="width:${pct}%"></div></div>`
+                 + `<span class="horae-rpg-arts-tier horae-rpg-arts-tier--trained">${escapeHtml(data.tier || '')}</span>`
+                 + `<span class="horae-rpg-arts-val">${escapeHtml(valStr)}</span>`
+                 + `</div>`;
+        };
 
         const _renderVal = (data) => {
             if (!data) return untrained;
@@ -7733,13 +7778,13 @@ function updateRpgDisplay() {
 
         for (const art of CANONICAL_ARTS) {
             const data = artsMap[art.stateKey];
-            html += `<div class="horae-rpg-arts-row"><span class="horae-rpg-arts-label">${escapeHtml(t(art.i18nKey))}</span><span class="horae-rpg-arts-val">${escapeHtml(_renderVal(data))}</span></div>`;
+            html += _buildArtsRow(art.icon, t(art.i18nKey), data);
         }
 
         const canonicalSet = new Set(CANONICAL_ARTS.map(a => a.stateKey));
         for (const [k, v] of Object.entries(artsMap)) {
             if (canonicalSet.has(k)) continue;
-            html += `<div class="horae-rpg-arts-row"><span class="horae-rpg-arts-label">${escapeHtml(k)}</span><span class="horae-rpg-arts-val">${escapeHtml(_renderVal(v))}</span></div>`;
+            html += _buildArtsRow('fa-circle-dot', k, v);
         }
 
         html += '</div>';

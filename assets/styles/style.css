@@ -8715,3 +8715,113 @@ body .horae-context-menu {
 .horae-rpg-hud-identity-chip--spiritRoot { /* B3c-2c-visual: 五行颜色 */ }
 .horae-rpg-hud-identity-chip--constitution { /* B3c-2c-visual: 体质稀有度 */ }
 .horae-rpg-hud-identity-chip--xianZi { /* B3c-2c-visual: 仙姿 */ }
+
+/* ══════════════════════════════════════════════════════════════
+ * B3c-2c-visual-1: RPG tab 卡片化 + 图标 + 六艺进度条
+ * ══════════════════════════════════════════════════════════════ */
+.horae-rpg-card {
+    background: var(--horae-bg-secondary);
+    border: 1px solid var(--horae-border);
+    border-radius: var(--horae-radius);
+    padding: 10px 14px;
+    margin-bottom: 10px;
+}
+.horae-rpg-field-row {
+    display: grid;
+    grid-template-columns: 20px 56px 1fr;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 0;
+    font-size: 13px;
+}
+.horae-rpg-field-row + .horae-rpg-field-row {
+    border-top: 1px dashed rgba(255, 255, 255, 0.05);
+}
+.horae-rpg-field-icon {
+    text-align: center;
+    color: var(--horae-text-muted);
+    font-size: 12px;
+}
+.horae-rpg-field-icon--bloodline {
+    color: var(--horae-danger);
+}
+.horae-rpg-field-label {
+    color: var(--horae-text-muted);
+}
+.horae-rpg-field-val {
+    color: var(--horae-text);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 六艺 tab */
+.horae-rpg-arts {
+    display: flex;
+    flex-direction: column;
+}
+.horae-rpg-arts-row {
+    display: grid;
+    grid-template-columns: 20px 44px 1fr 60px 76px;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    font-size: 13px;
+}
+.horae-rpg-arts-row + .horae-rpg-arts-row {
+    border-top: 1px dashed rgba(255, 255, 255, 0.05);
+}
+.horae-rpg-arts-icon {
+    text-align: center;
+    color: var(--horae-text-muted);
+    font-size: 12px;
+}
+.horae-rpg-arts-label {
+    color: var(--horae-text);
+}
+.horae-rpg-arts-bar {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.horae-rpg-arts-bar-fill {
+    height: 100%;
+    background: var(--horae-primary);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+.horae-rpg-arts-tier {
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--horae-text-muted);
+    text-align: center;
+    white-space: nowrap;
+}
+.horae-rpg-arts-tier--trained {
+    background: rgba(124, 58, 237, 0.18);
+    color: var(--horae-primary-light);
+}
+.horae-rpg-arts-val {
+    color: var(--horae-text-muted);
+    font-size: 12px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 身份面板容器（外层已用 .horae-rpg-card 包裹） */
+.horae-rpg-identity-list {
+    display: flex;
+    flex-direction: column;
+}
+
+/* 浅色主题下虚线分隔降级 */
+@media (prefers-color-scheme: light) {
+    .horae-rpg-field-row + .horae-rpg-field-row {
+        border-top-color: rgba(0, 0, 0, 0.06);
+    }
+    .horae-rpg-arts-row + .horae-rpg-arts-row {
+        border-top-color: rgba(0, 0, 0, 0.06);
+    }
+}
