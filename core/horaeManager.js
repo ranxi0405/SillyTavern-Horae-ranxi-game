@@ -1948,9 +1948,9 @@ if (sendCharacters) {
 
         pushField(L('灵根', 'Spirit Root'), id.spiritRoot);
         pushField(L('体质', 'Constitution'), id.constitution);
+        pushField(L('仙姿', 'Xian Zi'), id.xianZi);
         pushArray(L('天赋', 'Talents'), id.talents);
         pushField(L('血脉', 'Bloodline'), id.bloodline);
-        pushArray(L('初始功法', 'Innate Arts'), id.arts);
         pushField(L('出身', 'Background'), id.background);
 
         if (lines.length === 1) return '';

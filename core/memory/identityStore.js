@@ -28,10 +28,14 @@ export const IDENTITY_FIELDS = [
     'bloodline',
     'arts',
     'background',
+    'xianZi',
+    'spiritRootDisplay',
+    'constitutionDisplay',
 ];
 
-const STRING_FIELDS = ['spiritRoot', 'constitution', 'bloodline', 'background'];
+const STRING_FIELDS = ['spiritRoot', 'constitution', 'bloodline', 'background', 'xianZi'];
 const ARRAY_FIELDS = ['talents', 'arts'];
+const DISPLAY_FIELDS = ['spiritRootDisplay', 'constitutionDisplay'];
 
 export function emptyIdentity() {
     return {
@@ -43,6 +47,9 @@ export function emptyIdentity() {
         bloodline: null,
         arts: [],
         background: null,
+        xianZi: null,
+        spiritRootDisplay: null,
+        constitutionDisplay: null,
     };
 }
 
@@ -76,6 +83,9 @@ export function normalizeIdentity(raw) {
     }
     for (const f of ARRAY_FIELDS) {
         base[f] = _normArray(raw[f]);
+    }
+    for (const f of DISPLAY_FIELDS) {
+        base[f] = _normString(raw[f]);
     }
     base.hidden = raw.hidden === true;
 

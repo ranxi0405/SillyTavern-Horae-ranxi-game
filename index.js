@@ -7530,11 +7530,13 @@ function renderIdentityPanel() {
     container.style.display = '';
 
     const rows = [];
-    if (id.spiritRoot) rows.push([t('rpg.identitySpiritRoot'), id.spiritRoot]);
-    if (id.constitution) rows.push([t('rpg.identityConstitution'), id.constitution]);
+    const _sr = id.spiritRootDisplay || id.spiritRoot;
+    if (_sr) rows.push([t('rpg.identitySpiritRoot'), _sr]);
+    const _cs = id.constitutionDisplay || id.constitution;
+    if (_cs) rows.push([t('rpg.identityConstitution'), _cs]);
+    if (id.xianZi) rows.push([t('rpg.identityXianZi'), id.xianZi]);
     if (Array.isArray(id.talents) && id.talents.length > 0) rows.push([t('rpg.identityTalents'), id.talents.join(' / ')]);
     if (id.bloodline) rows.push([t('rpg.identityBloodline'), id.bloodline]);
-    if (Array.isArray(id.arts) && id.arts.length > 0) rows.push([t('rpg.identityArts'), id.arts.join(' / ')]);
     if (id.background) rows.push([t('rpg.identityBackground'), id.background]);
 
     if (rows.length === 0) {
