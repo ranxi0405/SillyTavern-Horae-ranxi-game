@@ -8803,6 +8803,33 @@ body .horae-context-menu {
     background: rgba(124, 58, 237, 0.18);
     color: var(--horae-primary-light);
 }
+
+/* B3c-2c-visual-2: 六艺段位色阶 + 丹道三阶 */
+.horae-rpg-arts-bar-fill--untrained  { background: #6b7280; }
+.horae-rpg-arts-bar-fill--apprentice { background: #94a3b8; }
+.horae-rpg-arts-bar-fill--tier1  { background: #10b981; }
+.horae-rpg-arts-bar-fill--tier2  { background: #3b82f6; }
+.horae-rpg-arts-bar-fill--tier3  { background: #7c3aed; }
+.horae-rpg-arts-bar-fill--tier4  { background: #f59e0b; }
+.horae-rpg-arts-bar-fill--tier5  { background: #f97316; }
+.horae-rpg-arts-bar-fill--tier6  { background: #ef4444; }
+.horae-rpg-arts-bar-fill--dao-tian { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.horae-rpg-arts-bar-fill--dao-hua  { background: linear-gradient(90deg, #7c3aed, #f59e0b); }
+.horae-rpg-arts-bar-fill--dao-wuji { background: linear-gradient(90deg, #fbbf24, #e5e7eb, #a78bfa); }
+.horae-rpg-arts-bar-fill--default { background: var(--horae-primary); }
+
+.horae-rpg-arts-tier--untrained  { background: rgba(107, 114, 128, 0.15); color: #94a3b8; }
+.horae-rpg-arts-tier--apprentice { background: rgba(148, 163, 184, 0.18); color: #cbd5e1; }
+.horae-rpg-arts-tier--tier1 { background: rgba(16, 185, 129, 0.18); color: #34d399; }
+.horae-rpg-arts-tier--tier2 { background: rgba(59, 130, 246, 0.18); color: #60a5fa; }
+.horae-rpg-arts-tier--tier3 { background: rgba(124, 58, 237, 0.18); color: #a78bfa; }
+.horae-rpg-arts-tier--tier4 { background: rgba(245, 158, 11, 0.18); color: #fbbf24; }
+.horae-rpg-arts-tier--tier5 { background: rgba(249, 115, 22, 0.18); color: #fb923c; }
+.horae-rpg-arts-tier--tier6 { background: rgba(239, 68, 68, 0.18); color: #f87171; }
+.horae-rpg-arts-tier--dao-tian { background: rgba(245, 158, 11, 0.25); color: #fbbf24; font-weight: 700; }
+.horae-rpg-arts-tier--dao-hua  { background: linear-gradient(135deg, rgba(124, 58, 237, 0.25), rgba(245, 158, 11, 0.25)); color: #fbbf24; font-weight: 700; }
+.horae-rpg-arts-tier--dao-wuji { background: linear-gradient(135deg, rgba(251, 191, 36, 0.25), rgba(167, 139, 250, 0.25)); color: #e5e7eb; font-weight: 700; letter-spacing: 0.5px; }
+.horae-rpg-arts-tier--default { background: rgba(255, 255, 255, 0.06); color: var(--horae-text-muted); }
 .horae-rpg-arts-val {
     color: var(--horae-text-muted);
     font-size: 12px;

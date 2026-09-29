@@ -7695,14 +7695,44 @@ function updateRpgDisplay() {
      *  rpg.arts 里的额外 key 原样追加显示，不做模糊匹配。
      */
     const _ART_GRADE_RANGES = [
-        { min: 0, max: 20 },
-        { min: 21, max: 100 },
+        { min: 0, max: 100 },
         { min: 101, max: 500 },
-        { min: 501, max: 3000 },
-        { min: 3001, max: 8000 },
-        { min: 8001, max: 30000 },
-        { min: 30001, max: Infinity },
+        { min: 501, max: 2000 },
+        { min: 2001, max: 6000 },
+        { min: 6001, max: 12000 },
+        { min: 12001, max: 22000 },
+        { min: 22001, max: 36000 },
     ];
+    /** 六品封顶值（达到后不再显示上限数值，进度视为圆满） */
+    const _ART_GRADE_CAP = 36000;
+    /** tier 容错规范化 */
+    function _normalizeTier(tier) {
+        if (!tier || typeof tier !== 'string') return null;
+        const t = tier.trim();
+        if (!t) return null;
+        if (/丹道[·•\-_.\s]?天成/.test(t)) return '丹道·天成';
+        if (/丹道[·•\-_.\s]?化境/.test(t)) return '丹道·化境';
+        if (/丹道[·•\-_.\s]?无极/.test(t)) return '丹道·无极';
+        if (t === '学徒' || t === '未入门') return t;
+        if (/^[一二三四五六]品$/.test(t)) return t;
+        return t;
+    }
+    /** tier → CSS class 后缀（用于色阶） */
+    function _resolveTierClass(tierNorm) {
+        if (!tierNorm) return 'default';
+        if (tierNorm === '未入门') return 'untrained';
+        if (tierNorm === '学徒') return 'apprentice';
+        if (tierNorm === '一品') return 'tier1';
+        if (tierNorm === '二品') return 'tier2';
+        if (tierNorm === '三品') return 'tier3';
+        if (tierNorm === '四品') return 'tier4';
+        if (tierNorm === '五品') return 'tier5';
+        if (tierNorm === '六品') return 'tier6';
+        if (tierNorm === '丹道·天成') return 'dao-tian';
+        if (tierNorm === '丹道·化境') return 'dao-hua';
+        if (tierNorm === '丹道·无极') return 'dao-wuji';
+        return 'default';
+    }
     function _buildArtsHtml(name, rpg) {
         const artsMap = rpg.arts?.[name] || {};
         const untrained = t('ui.rpgArtsUntrained');
@@ -7722,33 +7752,45 @@ function updateRpgDisplay() {
                      + `<i class="fa-solid ${icon} horae-rpg-arts-icon"></i>`
                      + `<span class="horae-rpg-arts-label">${escapeHtml(label)}</span>`
                      + `<div class="horae-rpg-arts-bar"></div>`
-                     + `<span class="horae-rpg-arts-tier">${escapeHtml(untrained)}</span>`
+                     + `<span class="horae-rpg-arts-tier horae-rpg-arts-tier--untrained">${escapeHtml(untrained)}</span>`
                      + `<span class="horae-rpg-arts-val">——</span>`
                      + `</div>`;
             }
-            let seg = null;
-            for (let gi = 0; gi < _ART_GRADE_RANGES.length; gi++) {
-                const g = _ART_GRADE_RANGES[gi];
-                if (typeof data.xp === 'number' && data.xp >= g.min && data.xp <= g.max) { seg = g; break; }
-            }
+            const _tierNorm = _normalizeTier(data.tier);
+            const _tierClass = _resolveTierClass(_tierNorm);
+            const _isDao = _tierClass.indexOf('dao-') === 0;
+            const _xp = (typeof data.xp === 'number') ? data.xp : null;
+
             let pct = 0;
             let valStr = '';
-            if (seg && seg.max === Infinity) {
+            if (_isDao) {
                 pct = 100;
-                valStr = data.xp + '+';
-            } else if (seg && typeof data.xp === 'number') {
-                pct = Math.min(100, Math.round(data.xp / seg.max * 100));
-                valStr = data.xp + '/' + seg.max;
-            } else if (typeof data.xp === 'number') {
-                valStr = String(data.xp);
-            } else {
+                valStr = (_xp != null) ? String(_xp) : '—';
+            } else if (_xp == null) {
                 valStr = '';
+            } else if (_xp >= _ART_GRADE_CAP) {
+                // 达到六品封顶后：满条 + 不显示上限数值
+                pct = 100;
+                valStr = String(_xp);
+            } else {
+                let seg = null;
+                for (let gi = 0; gi < _ART_GRADE_RANGES.length; gi++) {
+                    const g = _ART_GRADE_RANGES[gi];
+                    if (_xp >= g.min && _xp <= g.max) { seg = g; break; }
+                }
+                if (seg) {
+                    pct = Math.min(100, Math.round(_xp / seg.max * 100));
+                    valStr = _xp + '/' + seg.max;
+                } else {
+                    valStr = String(_xp);
+                }
             }
+            const _tierShow = _tierNorm || data.tier || '';
             return `<div class="horae-rpg-arts-row">`
                  + `<i class="fa-solid ${icon} horae-rpg-arts-icon"></i>`
                  + `<span class="horae-rpg-arts-label">${escapeHtml(label)}</span>`
-                 + `<div class="horae-rpg-arts-bar"><div class="horae-rpg-arts-bar-fill" style="width:${pct}%"></div></div>`
-                 + `<span class="horae-rpg-arts-tier horae-rpg-arts-tier--trained">${escapeHtml(data.tier || '')}</span>`
+                 + `<div class="horae-rpg-arts-bar"><div class="horae-rpg-arts-bar-fill horae-rpg-arts-bar-fill--${_tierClass}" style="width:${pct}%"></div></div>`
+                 + `<span class="horae-rpg-arts-tier horae-rpg-arts-tier--${_tierClass}">${escapeHtml(_tierShow)}</span>`
                  + `<span class="horae-rpg-arts-val">${escapeHtml(valStr)}</span>`
                  + `</div>`;
         };
