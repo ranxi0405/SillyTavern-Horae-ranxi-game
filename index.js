@@ -7695,13 +7695,13 @@ function updateRpgDisplay() {
      *  rpg.arts 里的额外 key 原样追加显示，不做模糊匹配。
      */
     const _ART_GRADE_RANGES = [
-        { min: 0, max: 19 },
-        { min: 20, max: 99 },
-        { min: 100, max: 499 },
-        { min: 500, max: 2999 },
-        { min: 3000, max: 7999 },
-        { min: 8000, max: 29999 },
-        { min: 30000, max: Infinity },
+        { min: 0, max: 20 },
+        { min: 21, max: 100 },
+        { min: 101, max: 500 },
+        { min: 501, max: 3000 },
+        { min: 3001, max: 8000 },
+        { min: 8001, max: 30000 },
+        { min: 30001, max: Infinity },
     ];
     function _buildArtsHtml(name, rpg) {
         const artsMap = rpg.arts?.[name] || {};
