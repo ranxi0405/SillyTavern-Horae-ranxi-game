@@ -21997,6 +21997,19 @@ const HIDDEN_KEYWORDS = [
 ];
 
 /* ============================================================
+ * Fact 提取：主角 identity-owned predicate 硬约束
+ * 仅对主角（user 角色）生效；NPC 的灵根/体质/天赋等属于 Fact
+ * ============================================================ */
+const IDENTITY_OWNED_PREDICATES = new Set([
+    '灵根', '体质', '天赋', '血脉', '仙姿',
+]);
+
+function _isMainCharacterSubject(subject) {
+    const mc = getContext()?.name1 || '';
+    return !!mc && subject === mc;
+}
+
+/* ============================================================
  * Fact 提取 Prompt 构造
  * ============================================================ */
 function _buildFactExtractionPrompt({ narrative, events, existingFacts, existingThreads = [], lang = 'zh-CN' }) {
@@ -22093,7 +22106,7 @@ appointment|某日某地之约|open|critical|public|甲角色|X年X月X日
 - 主角的天赋、外貌、性格、固有属性
 - 主角的已知出身背景
 - 主角的固定能力（如"过目不忘"这类天赋）
-- 主角已有的基础属性值（五维、境界、灵根）
+- 主角已有的基础属性值（五维、灵根、体质等）
 只提取剧情中"新出现"或"发生变化"的事实。
 
 【State-authoritative predicate —— 永不提取】
@@ -22116,8 +22129,31 @@ appointment|某日某地之约|open|critical|public|甲角色|X年X月X日
 应提取的示例（Fact 独有，不属 State）：
 ✅ 冉汐|门派|落霞宗
 ✅ 冉汐|身份|外门弟子
-✅ 冉汐|灵根|杂灵根
 ✅ 冉汐|性别|女
+
+【主角 identity-owned predicate —— 永不提取】
+以下 predicate 对**主角**由角色卡 extensions.horae.identity 管理，永不提取为 Fact：
+- 灵根（主角由 identity.spiritRoot 管理）
+- 体质（主角由 identity.constitution 管理）
+- 固有天赋（主角由 identity.talents 管理）
+- 血脉（主角由 identity.bloodline 管理）
+- 仙姿（主角由 identity.xianZi 管理）
+
+主角的出生背景（background）同样不提取为 Fact。
+
+⚠️ 重要边界：NPC 同样拥有灵根、体质、血脉、天赋等固有设定。
+**NPC 的这类信息属于剧情事实，应正常提取为 Fact**。
+本规则只针对主角。
+
+不应提取的示例（限主角）：
+❌ 冉汐|灵根|无界灵根       ← 主角 identity 已管理
+❌ 冉汐|体质|无界道体       ← 主角 identity 已管理
+❌ 冉汐|固有天赋|过目不忘   ← 主角 identity 已管理
+
+应提取的示例（NPC 固有设定）：
+✅ 某NPC|灵根|天灵根
+✅ 某NPC|体质|火灵体
+✅ 某NPC|血脉|雷鹏血脉
 
 【提取规则】
 1. 只提取"长期结论"，不提取"过程"和"临时状态"
@@ -22313,6 +22349,12 @@ function _parseFactsResponse(raw) {
             + (target ? '\n' + target.subject + '\n' + target.predicate + '\n' + target.object : '');
         if (HIDDEN_KEYWORDS.some(kw => haystack.includes(kw))) {
             console.warn('[Horae][Fact] 命中黑名单，丢弃:', subject, predicate, objectValue);
+            continue;
+        }
+
+        // 主角 identity-owned predicate 硬过滤（仅对主角生效，NPC 的灵根/体质等正常提取）
+        if (_isMainCharacterSubject(subject) && IDENTITY_OWNED_PREDICATES.has(predicate)) {
+            console.warn('[Horae][Fact] 主角 identity-owned predicate 命中，丢弃:', subject, predicate, objectValue);
             continue;
         }
 
