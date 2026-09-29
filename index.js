@@ -7621,7 +7621,9 @@ function updateRpgDisplay() {
     function _groupSkillsByCategory(skills) {
         const valid = ['main', 'attack', 'movement', 'body', 'spirit', 'secret', 'other'];
         const groups = { main: [], attack: [], movement: [], body: [], spirit: [], secret: [], other: [] };
+        const _CRAFT_NAMES_LOCAL = new Set(['炼丹', '炼器', '符箓', '阵法', '御兽', '灵植']);
         for (const sk of (skills || [])) {
+            if (_CRAFT_NAMES_LOCAL.has(sk.name)) continue;
             const cat = (sk.category && valid.includes(sk.category)) ? sk.category : 'other';
             groups[cat].push(sk);
         }

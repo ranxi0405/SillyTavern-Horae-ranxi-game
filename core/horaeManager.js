@@ -2627,12 +2627,22 @@ if (sendCharacters) {
             const VALID_CATEGORIES = ['main', 'attack', 'movement', 'body', 'spirit', 'secret', 'other'];
             const normCategory = (c) => (c && VALID_CATEGORIES.includes(c)) ? c : 'other';
             const _isCraftCat = (c) => (c === 'craft' || c === '六艺' || c === '六藝');
+            const _CRAFT_NAMES = new Set(['炼丹', '炼器', '符箓', '阵法', '御兽', '灵植']);
+            const _isCraftName = (n) => _CRAFT_NAMES.has(n);
             const _extractCraftXp = (desc) => {
-                if (!desc || typeof desc !== 'string') return null;
-                const m = desc.match(/熟练度[:：\s]*(\d+)/);
-                if (!m) return null;
-                const n = Number(m[1]);
-                return Number.isSafeInteger(n) ? n : null;
+                if (desc == null) return null;
+                const s = String(desc).trim();
+                if (!s) return null;
+                const m = s.match(/熟练度[:：\s]*(\d+)/);
+                if (m) {
+                    const n = Number(m[1]);
+                    return Number.isSafeInteger(n) ? n : null;
+                }
+                if (/^\d+$/.test(s)) {
+                    const n = Number(s);
+                    return Number.isSafeInteger(n) ? n : null;
+                }
+                return null;
             };
             if (_uoS && parts.length >= 1) {
                 const owner = _uoName;
@@ -2649,6 +2659,16 @@ if (sendCharacters) {
                         rpg.arts.push(art);
                     } else {
                         console.warn('[Horae][skill|craft] 非法行，忽略:', line);
+                    }
+                    return;
+                }
+                if (_isCraftName(name)) {
+                    if (owner && name && tier) {
+                        if (!rpg.arts) rpg.arts = [];
+                        const art = { owner, name, tier };
+                        const xp = _extractCraftXp(descRaw);
+                        if (xp != null) art.xp = xp;
+                        rpg.arts.push(art);
                     }
                     return;
                 }
@@ -2670,6 +2690,16 @@ if (sendCharacters) {
                         rpg.arts.push(art);
                     } else {
                         console.warn('[Horae][skill|craft] 非法行，忽略:', line);
+                    }
+                    return;
+                }
+                if (_isCraftName(name)) {
+                    if (owner && name && tier) {
+                        if (!rpg.arts) rpg.arts = [];
+                        const art = { owner, name, tier };
+                        const xp = _extractCraftXp(descRaw);
+                        if (xp != null) art.xp = xp;
+                        rpg.arts.push(art);
                     }
                     return;
                 }
