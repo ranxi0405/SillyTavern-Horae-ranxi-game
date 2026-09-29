@@ -15578,6 +15578,8 @@ function _cacheIdentityToChat(identity) {
     const chat = horaeManager.getChat();
     if (!chat?.[0]?.horae_meta) return;
     chat[0].horae_meta.identity = identity || null;
+    // 缓存变更后立即触发面板重渲染，避免 DOM 停在旧值
+    try { renderIdentityPanel(); } catch (_) {}
 }
 
 /** 从角色卡读取 identity 并缓存。CHAT_CHANGED / 初始化时调用 */
