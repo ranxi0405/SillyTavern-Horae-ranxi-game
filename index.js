@@ -7513,6 +7513,76 @@ function _syncRpgTabVisibility() {
 
 /** 更新 RPG 分页（角色卡模式，按当前消息位置快照） */
 /** 渲染 RPG tab 里的"角色固有设定"面板（只读） */
+/** 打开 identity 编辑 modal（角色固有设定） */
+function openIdentityEditModal() {
+    closeEditModal();
+    const chat = horaeManager.getChat();
+    const id = chat?.[0]?.horae_meta?.identity || {};
+
+    const _esc = (v) => escapeHtml(String(v || ''));
+    const _row = (fid, label, val, ph) =>
+        '<div class="horae-edit-field">'
+      + '<label>' + escapeHtml(label) + '</label>'
+      + '<input id="' + fid + '" type="text" value="' + _esc(val) + '" placeholder="' + _esc(ph) + '" />'
+      + '</div>';
+
+    const _talentsStr = Array.isArray(id.talents) ? id.talents.join(' / ') : '';
+    const _bodyHtml =
+        _row('horae-identity-sr-real',     t('rpg.identitySpiritRoot') + ' · ' + t('rpg.identityReal'),     id.spiritRoot, '')
+      + _row('horae-identity-sr-display', t('rpg.identitySpiritRoot') + ' · ' + t('rpg.identityDisplay'), id.spiritRootDisplay, '')
+      + _row('horae-identity-cs-real',     t('rpg.identityConstitution') + ' · ' + t('rpg.identityReal'),     id.constitution, '')
+      + _row('horae-identity-cs-display',  t('rpg.identityConstitution') + ' · ' + t('rpg.identityDisplay'), id.constitutionDisplay, '')
+      + _row('horae-identity-xianzi',      t('rpg.identityXianZi'), id.xianZi, '')
+      + _row('horae-identity-talents',     t('rpg.identityTalents'), _talentsStr, t('rpg.identityTalentsPlaceholder'))
+      + _row('horae-identity-bloodline',   t('rpg.identityBloodline'), id.bloodline, '')
+      + _row('horae-identity-background',  t('rpg.identityBackground'), id.background, '');
+
+    const _modalHtml =
+        '<div id="horae-edit-modal" class="horae-modal' + (isLightMode() ? ' horae-light' : '') + '">'
+      + '<div class="horae-modal-content">'
+      + '<div class="horae-modal-header"><i class="fa-solid fa-pen"></i> ' + escapeHtml(t('rpg.identityEditTitle')) + '</div>'
+      + '<div class="horae-modal-body horae-edit-modal-body">' + _bodyHtml + '</div>'
+      + '<div class="horae-modal-footer">'
+      + '<button id="horae-identity-edit-save" class="horae-btn primary"><i class="fa-solid fa-check"></i> ' + escapeHtml(t('common.save')) + '</button>'
+      + '<button id="horae-identity-edit-cancel" class="horae-btn"><i class="fa-solid fa-xmark"></i> ' + escapeHtml(t('common.cancel')) + '</button>'
+      + '</div></div></div>';
+
+    document.body.insertAdjacentHTML('beforeend', _modalHtml);
+    preventModalBubble();
+
+    document.getElementById('horae-edit-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'horae-edit-modal') closeEditModal();
+    });
+
+    document.getElementById('horae-identity-edit-save').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const _parse = (v) => { const s = (v || '').trim(); return s || null; };
+        const _get = (fid) => document.getElementById(fid).value;
+        const _talents = _get('horae-identity-talents').replace(/[，,]/g, '/').split('/').map(s => s.trim()).filter(Boolean);
+        const _newId = {
+            _v: 'v0.1',
+            spiritRoot: _parse(_get('horae-identity-sr-real')),
+            spiritRootDisplay: _parse(_get('horae-identity-sr-display')),
+            constitution: _parse(_get('horae-identity-cs-real')),
+            constitutionDisplay: _parse(_get('horae-identity-cs-display')),
+            xianZi: _parse(_get('horae-identity-xianzi')),
+            talents: _talents,
+            bloodline: _parse(_get('horae-identity-bloodline')),
+            background: _parse(_get('horae-identity-background')),
+            hidden: id.hidden === true,
+            arts: Array.isArray(id.arts) ? id.arts : [],
+        };
+        const _ok = await _writeCardIdentity(_newId);
+        if (!_ok) { showToast(t('rpg.identitySaveFailed'), 'error'); return; }
+        closeEditModal();
+        renderIdentityPanel();
+        updateRpgDisplay();
+        showToast(t('toast.saveSuccess'), 'success');
+    });
+
+    document.getElementById('horae-identity-edit-cancel').addEventListener('click', () => closeEditModal());
+}
+
 function renderIdentityPanel() {
     const container = document.getElementById('horae-rpg-identity-area');
     const section = document.getElementById('horae-rpg-identity-section');
@@ -7521,9 +7591,10 @@ function renderIdentityPanel() {
     const chat = horaeManager.getChat();
     const id = chat?.[0]?.horae_meta?.identity;
 
+    // 空 identity 也显示面板（含编辑按钮），内容区显示占位
     if (!id || isIdentityEmpty(id)) {
-        container.style.display = 'none';
-        section.innerHTML = '';
+        container.style.display = '';
+        section.innerHTML = '<div class="horae-rpg-card"><div class="horae-rpg-field-row"><span class="horae-rpg-field-label">' + escapeHtml(t('rpg.identityNotSet')) + '</span></div></div>';
         return;
     }
 
@@ -13763,6 +13834,9 @@ function initSettingsEvents() {
             form.style.display = 'none';
         });
     });
+
+    // identity 编辑入口
+    $(document).on('click', '#horae-rpg-identity-edit', openIdentityEditModal);
 
     // RPG 技能增删
     $('#horae-rpg-add-skill').on('click', () => {
