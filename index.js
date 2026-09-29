@@ -7973,7 +7973,8 @@ function updateRpgDisplay() {
                 // 角色名行: 名称 + 等级 + 状态图标 ...... 货币（右端）
                 barsHtml += '<div class="horae-rpg-bar-card-header">';
                 barsHtml += `<span class="horae-rpg-char-name">${escapeHtml(name)}</span>`;
-                barsHtml += _buildCapsulesHtml(rpg);
+                const _identity = _getIdentityForCharacter(name);
+                barsHtml += _buildCapsulesHtml(rpg, { showIdentity: !!_identity, identity: _identity });
                 for (const e of effects) {
                     barsHtml += `<i class="fa-solid ${getStatusIcon(e)} horae-rpg-hud-effect" title="${escapeHtml(e)}"></i>`;
                 }
@@ -9715,11 +9716,19 @@ const _HUD_REALM_BASE_CULTIVATION = {
     '飞升': Infinity,
 };
 
-function _buildCapsulesHtml(rpg) {
-    if (!rpg.realm || typeof rpg.realm !== 'object' || typeof rpg.realm.name !== 'string' || rpg.realm.name.length === 0) {
-        return '';
-    }
+/** 取指定角色的 identity（仅主角有效，非主角返回 null） */
+function _getIdentityForCharacter(name) {
+    const mc = getContext()?.name1 || '';
+    if (!name || name !== mc) return null;
+    const chat = horaeManager.getChat();
+    return chat?.[0]?.horae_meta?.identity || null;
+}
+
+function _buildCapsulesHtml(rpg, options = {}) {
     const _tags = [];
+    const _hasRealm = rpg.realm && typeof rpg.realm === 'object'
+        && typeof rpg.realm.name === 'string' && rpg.realm.name.length > 0;
+    if (_hasRealm) {
     if (typeof rpg.age === 'number' && typeof rpg.lifespan === 'number') {
         _tags.push('<span class="horae-rpg-hud-tag">' + escapeHtml(t('ui.rpgHudAge')) + rpg.age + '/' + rpg.lifespan + '</span>');
     }
@@ -9754,7 +9763,36 @@ function _buildCapsulesHtml(rpg) {
             _tags.push('<span class="horae-rpg-hud-tag">' + escapeHtml(_spLabel) + '·' + escapeHtml(_sp.tier) + '</span>');
         }
     }
-    return _tags.length > 0 ? '<span class="horae-rpg-hud-tags">' + _tags.join('') + '</span>' : '';
+    }
+
+    let _out = '';
+    if (_tags.length > 0) {
+        _out += '<span class="horae-rpg-hud-tags">' + _tags.join('') + '</span>';
+    }
+
+    if (options.showIdentity && options.identity) {
+        const id = options.identity;
+        const _chips = [];
+        const _sr = id.spiritRootDisplay || id.spiritRoot;
+        if (_sr) {
+            _chips.push('<span class="horae-rpg-hud-identity-chip horae-rpg-hud-identity-chip--spiritRoot">'
+                + escapeHtml(t('ui.rpgHudIdentitySpiritRoot')) + '·' + escapeHtml(_sr) + '</span>');
+        }
+        const _cs = id.constitutionDisplay || id.constitution;
+        if (_cs) {
+            _chips.push('<span class="horae-rpg-hud-identity-chip horae-rpg-hud-identity-chip--constitution">'
+                + escapeHtml(t('ui.rpgHudIdentityConstitution')) + '·' + escapeHtml(_cs) + '</span>');
+        }
+        if (id.xianZi) {
+            _chips.push('<span class="horae-rpg-hud-identity-chip horae-rpg-hud-identity-chip--xianZi">'
+                + escapeHtml(t('ui.rpgHudIdentityXianZi')) + '·' + escapeHtml(id.xianZi) + '</span>');
+        }
+        if (_chips.length > 0) {
+            _out += '<span class="horae-rpg-hud-identity-tags">' + _chips.join('') + '</span>';
+        }
+    }
+
+    return _out;
 }
 
 function _calcCultivationSegmentHud(cur, realmName) {
@@ -9796,7 +9834,8 @@ function _buildCharHudHtml(name, rpg) {
 
     html += '<div class="horae-rpg-hud-header">';
     html += `<span class="horae-rpg-hud-name">${escapeHtml(name)}</span>`;
-    html += _buildCapsulesHtml(rpg);
+    const _identity = _getIdentityForCharacter(name);
+    html += _buildCapsulesHtml(rpg, { showIdentity: !!_identity, identity: _identity });
     if (mostSevere) {
         const summaryTitle = effectCount > 1
             ? `${mostSevere.text} +${effectCount - 1}`

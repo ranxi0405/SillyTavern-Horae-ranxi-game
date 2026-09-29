@@ -2042,6 +2042,9 @@
         "rpgOverviewLifespan": "寿元",
         "rpgOverviewAge": "年龄",
         "rpgHudAge": "年龄",
+        "rpgHudIdentitySpiritRoot": "灵根",
+        "rpgHudIdentityConstitution": "体质",
+        "rpgHudIdentityXianZi": "仙姿",
         "rpgOverviewLifespanMax": "寿元上限"
     },
     "npcFields": {

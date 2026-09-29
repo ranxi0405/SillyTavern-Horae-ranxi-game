@@ -1960,6 +1960,9 @@
         "rpgOverviewLifespan": "Lifespan",
         "rpgOverviewAge": "Age",
         "rpgHudAge": "Age",
+        "rpgHudIdentitySpiritRoot": "Spirit Root",
+        "rpgHudIdentityConstitution": "Constitution",
+        "rpgHudIdentityXianZi": "Xian Zi",
         "rpgOverviewLifespanMax": "Lifespan Max"
     },
     "npcFields": {

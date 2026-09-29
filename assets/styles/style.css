@@ -8694,3 +8694,24 @@ body .horae-context-menu {
     color: #c0c0c0;
     white-space: nowrap;
 }
+
+/* B3c-3: HUD identity chips (角色固有设定) - 独立于 state tags，颜色/稀有度留 B3c-2c-visual */
+.horae-rpg-hud-identity-tags {
+    display: inline-flex;
+    gap: 4px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+.horae-rpg-hud-identity-chip {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #c0c0c0;
+    white-space: nowrap;
+    font-style: italic;
+    letter-spacing: 0.2px;
+}
+.horae-rpg-hud-identity-chip--spiritRoot { /* B3c-2c-visual: 五行颜色 */ }
+.horae-rpg-hud-identity-chip--constitution { /* B3c-2c-visual: 体质稀有度 */ }
+.horae-rpg-hud-identity-chip--xianZi { /* B3c-2c-visual: 仙姿 */ }
