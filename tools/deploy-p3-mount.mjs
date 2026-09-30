@@ -9,6 +9,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEPLOY_DIR = 'I:/AI/SillyTavern-1.19.0/public/scripts/extensions/third-party/SillyTavern-Horae';
 const REL_FILES = [
     'index.js',
+    'core/horaeManager.js',
+    'core/memory/hiddenKeywords.js',
     'core/memory/identityKindRegistry.js',
     'core/memory/identityStore.js',
     'core/memory/identityView.js',
