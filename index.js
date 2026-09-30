@@ -15,7 +15,7 @@ import { vectorManager } from './core/vectorManager.js';
 import { FactStore } from './core/memory/factStore.js';
 import { DirectorStore } from './core/memory/directorStore.js';
 import { ThreadStore } from './core/memory/threadStore.js';
-import { sanitizeHiddenKeywords } from './core/memory/hiddenKeywords.js';
+import { sanitizeHiddenKeywords, setActiveHiddenMap } from './core/memory/hiddenKeywords.js';
 import { validateIdentity, normalizeIdentity, emptyIdentity, isIdentityEmpty } from './core/memory/identityStore.js';
 import { createIdentityGmApi } from './core/memory/identityGmApi.js';
 import { calculateRelativeTime, calculateDetailedRelativeTime, formatRelativeTime, generateTimeReference, getCurrentSystemTime, formatStoryDate, formatFullDateTime, parseStoryDate } from './utils/timeUtils.js';
@@ -15606,11 +15606,30 @@ function _loadIdentityFromCard() {
     if (!r.ok) {
         _cacheIdentityToChat(null);
         console.log('[Horae][B3a] identity 读取失败:', r.reason);
+        _loadHiddenKeywordsFromCard();
         return r;
     }
     _cacheIdentityToChat(r.identity);
+    _loadHiddenKeywordsFromCard();
     console.log('[Horae][B3a] identity 已缓存:', r.identity);
     return r;
+}
+
+function _loadHiddenKeywordsFromCard() {
+    try {
+        const ctx = getContext();
+        const charId = ctx?.characterId;
+        if (charId == null) {
+            setActiveHiddenMap({});
+            return;
+        }
+        const char = ctx.characters?.[charId];
+        const map = char?.data?.extensions?.horae?.hiddenKeywords;
+        setActiveHiddenMap(map || {});
+    } catch (e) {
+        console.warn('[Horae] 加载 hiddenKeywords 失败:', e);
+        setActiveHiddenMap({});
+    }
 }
 
 function _readCardProfile() {

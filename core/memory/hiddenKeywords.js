@@ -1,31 +1,47 @@
 /**
- * Horae HiddenKeywords v0.1
+ * Horae HiddenKeywords v0.2
  *
  * 职责：
- *   - 集中管理"仅天道知晓"的隐藏设定关键词
  *   - 提供 sanitize 函数：把隐藏词替换为占位符
- *   - 用于注入 Prompt 前的过滤（不修改存储层）
+ *   - 隐藏词由当前角色卡提供（extensions.horae.hiddenKeywords）
  *
  * 设计原则：
- *   - 存储层保持原文（玩家 UI 可看完整）
- *   - 注入层替换（AI 看不到具体名称）
- *   - 未来新增隐藏设定：只在 HIDDEN_MAP 里加一条
+ *   - 通用系统不硬编码任何具体角色秘密
+ *   - 通过 setActiveHiddenMap 在 CHAT_CHANGED / 卡加载时刷新
  */
 
-export const HIDDEN_MAP = {
-    '无界灵根': '[隐藏灵根]',
-    '无界道体': '[隐藏体质]',
-};
+// 默认空 map（历史兼容保留）
+export const HIDDEN_MAP = {};
 
-/**
- * 把文本中的隐藏关键词替换为占位符
- * @param {string} text
- * @returns {string}
- */
-export function sanitizeHiddenKeywords(text) {
+// 模块级 active map
+let _activeMap = {};
+
+function _normalizeMap(map) {
+    if (!map || typeof map !== 'object' || Array.isArray(map)) return {};
+    const out = {};
+    for (const [kw, rep] of Object.entries(map)) {
+        if (typeof kw !== 'string' || !kw.trim()) continue;
+        if (typeof rep !== 'string' || !rep) continue;
+        out[kw] = rep;
+    }
+    return out;
+}
+
+export function setActiveHiddenMap(map) {
+    _activeMap = _normalizeMap(map);
+}
+
+export function getActiveHiddenMap() {
+    return { ..._activeMap };
+}
+
+export function sanitizeHiddenKeywords(text, mapOverride) {
     if (!text || typeof text !== 'string') return text;
+    const map = (mapOverride && typeof mapOverride === 'object' && !Array.isArray(mapOverride))
+        ? _normalizeMap(mapOverride)
+        : _activeMap;
     let out = text;
-    for (const [kw, rep] of Object.entries(HIDDEN_MAP)) {
+    for (const [kw, rep] of Object.entries(map)) {
         if (out.includes(kw)) {
             out = out.split(kw).join(rep);
         }
@@ -33,12 +49,10 @@ export function sanitizeHiddenKeywords(text) {
     return out;
 }
 
-/**
- * 检测文本是否包含隐藏关键词
- * @param {string} text
- * @returns {boolean}
- */
-export function containsHiddenKeywords(text) {
+export function containsHiddenKeywords(text, mapOverride) {
     if (!text || typeof text !== 'string') return false;
-    return Object.keys(HIDDEN_MAP).some(kw => text.includes(kw));
+    const map = (mapOverride && typeof mapOverride === 'object' && !Array.isArray(mapOverride))
+        ? _normalizeMap(mapOverride)
+        : _activeMap;
+    return Object.keys(map).some(kw => text.includes(kw));
 }
