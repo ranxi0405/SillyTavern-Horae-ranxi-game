@@ -82,6 +82,17 @@ export function migrate(id, opts = {}) {
     const fromVersion = detectVersion(id);
 
     if (fromVersion === SCHEMA_VERSION_CURRENT) {
+        // 边界：v0.2 但 entries 缺失 → 从 legacy 恢复
+        if (!Array.isArray(id.entries)) {
+            const recovered = syncLegacyToEntries(id);
+            return {
+                ok: true, reason: 'repairedMissingEntries',
+                fromVersion, toVersion: SCHEMA_VERSION_CURRENT,
+                migratedCount: recovered.migratedCount,
+                entries: recovered.entries,
+                verify: verify(id),
+            };
+        }
         return {
             ok: true, reason: 'alreadyCurrent',
             fromVersion, toVersion: SCHEMA_VERSION_CURRENT,

@@ -231,7 +231,7 @@ function _deriveEntriesFromLegacy(id) {
     return out;
 }
 
-function _syncLegacyMirror(id, kind) {
+export function syncLegacyMirror(id, kind) {
     const legacyField = LEGACY_FIELD_MAP[kind];
     if (!legacyField) return;
     const matching = id.entries.filter(e => e.kind === kind);
@@ -336,13 +336,13 @@ export function setIdentityField(id, kind, value, opts = {}) {
             existingVals.add(s);
             added.push(entry);
         }
-        _syncLegacyMirror(id, kind);
+        syncLegacyMirror(id, kind);
         return added;
     }
 
     id.entries = id.entries.filter(e => e.kind !== kind);
     if (value === null || value === undefined || (typeof value === 'string' && !value.trim())) {
-        _syncLegacyMirror(id, kind);
+        syncLegacyMirror(id, kind);
         return null;
     }
     const entry = _createEntry(kind, typeof value === 'string' ? value.trim() : value, {
@@ -354,7 +354,7 @@ export function setIdentityField(id, kind, value, opts = {}) {
         meta: opts.meta,
     });
     id.entries.push(entry);
-    _syncLegacyMirror(id, kind);
+    syncLegacyMirror(id, kind);
     return entry;
 }
 
