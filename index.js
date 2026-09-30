@@ -17,6 +17,7 @@ import { DirectorStore } from './core/memory/directorStore.js';
 import { ThreadStore } from './core/memory/threadStore.js';
 import { sanitizeHiddenKeywords } from './core/memory/hiddenKeywords.js';
 import { validateIdentity, normalizeIdentity, emptyIdentity, isIdentityEmpty } from './core/memory/identityStore.js';
+import { createIdentityGmApi } from './core/memory/identityGmApi.js';
 import { calculateRelativeTime, calculateDetailedRelativeTime, formatRelativeTime, generateTimeReference, getCurrentSystemTime, formatStoryDate, formatFullDateTime, parseStoryDate } from './utils/timeUtils.js';
 import { t, tForLang, initI18n, getLanguage, isZhLocale, setLanguage, detectEffectiveAiLangIsZh, detectEffectiveAiLang } from './core/i18n.js';
 import { initPromptDefaults, ensurePromptDefaults, ensurePresetPrompts, getPromptDefaultSync, getPresetPromptsSync, BUILTIN_PRESET_IDS } from './core/promptDefaults.js';
@@ -1493,6 +1494,17 @@ function unregisterHoraeDataProvider(id) {
 }
 
 function _publishHoraeApi() {
+    const gmApi = createIdentityGmApi({
+        getIdentity: () => horaeManager.getChat()?.[0]?.horae_meta?.identity || null,
+        setIdentity: (id) => {
+            const chat = horaeManager.getChat();
+            if (chat?.[0]?.horae_meta) chat[0].horae_meta.identity = id;
+        },
+        saveCard: async (id) => {
+            try { return await _writeCardIdentity(id); } catch (_) { return false; }
+        },
+    });
+
     const api = Object.freeze({
         version: VERSION,
         portApiVersion: 1,
@@ -1516,6 +1528,9 @@ function _publishHoraeApi() {
         unregisterDataProvider: unregisterHoraeDataProvider,
         getDataProviderIds: () => [...horaeDataProviders.keys()],
         slots: [...HORAE_PORT_SLOTS],
+        identity: Object.freeze({
+            gm: gmApi,
+        }),
     });
     window.Horae = api;
     return api;
