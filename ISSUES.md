@@ -917,3 +917,445 @@ generation != 'fixed' 且未生成时：
 - 确定 View 层渲染函数签名
 - 确定 GM Console 命令的 API 形状
 - 确定迁移脚本的一次性执行时机
+
+---
+
+## 通用角色设定系统 · 前置任务设计（2026-09-30 定稿）
+
+**状态**：设计定稿，未进入代码实现
+**执行顺序**：7 → 6 → 1 → 2 → 3 → 4 → 5
+
+### 任务 7 · Schema Version Policy
+
+#### 版本演进
+
+| 版本 | 模型 | 状态 |
+|---|---|---|
+| v0.1 | 旧字段模型 | 当前 |
+| v0.2 | entries 模型 + 双写 | 未来 |
+| v0.3 | 移除 legacy 字段 | 未来 |
+
+#### 约束
+
+- **不允许跳跃升级**（v0.1 不能直接跳到 v0.3）
+- **每次升级必须有 migrate()**
+- **每次升级必须有 verify()**
+- **migration 版本管理独立记录**
+
+#### 不变量
+
+- `_v` 字段永远存在
+- 迁移是**单向**的（只能 vN → vN+1）
+- 每次迁移必须幂等（重复调用无副作用）
+
+### 任务 6 · KIND Registry 设计
+
+#### 注册表结构
+
+    // core/memory/identityKindRegistry.js
+    export const KIND_REGISTRY = {
+      spiritRoot: {
+        label: { zh: '灵根', en: 'Spirit Root', ... },
+        aiLabel: { zh: '灵根', en: 'Spirit Root' },
+        icon: 'fa-seedling',
+        order: 10,
+        category: 'core',
+      },
+      // ...
+    };
+
+#### 核心 kind 注册表
+
+| kind | icon | order |
+|---|---|---|
+| gender | fa-venus-mars | 1 |
+| spiritRoot | fa-seedling | 10 |
+| constitution | fa-shield | 11 |
+| bloodline | fa-dna | 12 |
+| xianZi | fa-gem | 13 |
+| talent | fa-star | 20 |
+| arts | fa-book | 21 |
+| background | fa-house | 30 |
+| goldenFinger | fa-hand-sparkles | 40 |
+| goldenFingerSource | fa-question | 41 |
+
+#### 扩展 kind 处理
+
+**三种路径（混合方案 C）**：
+- 核心 kind 走注册表
+- 扩展 kind 优先读 `entry.meta.label` / `entry.meta.icon`
+- 都没有 → fallback：`kind` 字符串 + `fa-circle-dot`
+
+#### 命名约束（新增）
+
+- **kind 名称发布后不可重命名**
+- 只允许**新增 alias**，避免未来迁移问题
+- alias 记录在注册表：`aliases: ['specialMark', 'special_mark']`
+
+#### Prompt 标签处理
+
+- 核心 kind → `aiLabel`
+- 扩展 kind → `entry.meta.aiLabel ?? entry.meta.label ?? kind`
+
+#### i18n key 命名
+
+    rpg.identityGender
+    rpg.identitySpiritRoot
+    ...
+    rpg.identityExt_<kind>    // 扩展 kind 统一前缀
+
+扩展 kind 默认 label：`Ext <kind>`
+
+### 任务 1 · entries[] 与旧字段双写接口
+
+#### 字段映射表
+
+| 旧字段 | entries 映射 | 备注 |
+|---|---|---|
+| spiritRoot | { kind: 'spiritRoot', value } | 单值 |
+| spiritRootDisplay | entry.display | 不是独立 entry |
+| constitution | { kind: 'constitution', value } | 单值 |
+| constitutionDisplay | entry.display | 同上 |
+| xianZi | { kind: 'xianZi', value } | 需补充核心 kind |
+| gender | { kind: 'gender', value } | P1 新增 |
+| background | { kind: 'background', value } | 需补充核心 kind |
+| bloodline | { kind: 'bloodline', value } | 单值 |
+| talents[] | N 条 { kind: 'talent', value } | 数组转多条 |
+| arts[] | N 条 { kind: 'arts', value } | 数组转多条 |
+| hidden | **不映射为 entry** | 计算属性 |
+
+核心 kind 需补充：background / xianZi / arts
+
+#### 双写约束（强制）
+
+- **未来新增代码禁止直接修改旧字段**
+- 必须通过 `setIdentityField()`
+- 阶段 A 期间：setIdentityField() 双写 entries + 旧字段镜像
+- 阶段 C 时旧字段完全废弃，只写 entries
+
+**违规检测**：阶段 B/C 迁移脚本扫描代码，标记 `id.spiritRoot = ...` 直接赋值。
+
+#### 读取 fallback（含容错）
+
+    1. v0.2 + entries 存在 → 读 entries
+    2. v0.2 + entries 缺失 → console.warn + 尝试从旧字段恢复 entries
+    3. v0.1 或无 _v → 读旧字段
+    4. 全部失败 → 报错
+
+**不做"两边都读再 merge"**——避免不确定性。
+
+#### 接口函数签名
+
+    // 读取
+    function getIdentityField(id, kind) → value | null
+    
+    // 写入（同时更新 entries + 旧字段镜像）
+    function setIdentityField(id, kind, value, opts = {})
+      // opts: { display, visibility, generation, bound, source, meta }
+    
+    // 批量读取
+    function getIdentityEntries(id, opts = {})
+      // opts: { filterByVisibility, includeNotGenerated }
+    
+    // 同步（阶段 A 一次性迁移用）
+    function syncLegacyToEntries(id) → { migratedCount }
+
+#### 写入优先级
+
+阶段 A：**双写**（entries + 旧字段镜像），保证兼容性和数据一致。
+
+### 任务 2 · View 层渲染函数
+
+#### 三个独立函数
+
+| 函数 | 消费者 | 输出 |
+|---|---|---|
+| renderIdentityPlayerRows(identity) | Player View UI | rows[] 含 display |
+| renderIdentityGmRows(identity) | GM Console / 未来 GM UI | rows[] 含 visibility/generation 徽章 |
+| renderIdentityAiEntries(identity) | AI Prompt 注入 | lines[] 含 sanitize |
+
+#### 约束（三个函数共享）
+
+- **纯数据转换**
+- **不负责保存**
+- **不修改 identity**
+- **无副作用**（除 console.log）
+
+#### renderIdentityPlayerRows
+
+    1. 归一化为 entries
+    2. 过滤：isPlayerVisible(e) === true
+    3. 排序：核心 kind 优先 + createdAt
+    4. 映射 { icon, label, value, extraCls }
+       - icon: KIND_REGISTRY[e.kind].icon ?? 'fa-circle-dot'
+       - label: i18n(`rpg.identity${Capitalize(e.kind)}`)
+       - value: e.display ?? e.value
+    5. 返回
+
+#### renderIdentityGmRows
+
+    1. 归一化为 entries
+    2. 不过滤（全部显示）
+    3. 附加：
+       - visibilityBadge: '🚫' | '🔓' | '🔒' | ''
+       - generationBadge: '🎲' | ''
+       - revealedAt: e.revealedAt?.story ?? '—'
+    4. 返回
+
+**不负责 UI 呈现**——数据由 Console 或未来独立面板消费。
+
+#### renderIdentityAiEntries
+
+    1. 归一化为 entries
+    2. 过滤：isAiVisible(e) === true
+    3. 排序：
+       - 核心 kind 优先
+       - 扩展 kind 按 createdAt
+       - hidden 排在 public 之后
+    4. 映射 line:
+       - playerVisible(e) → `${label} = ${display ?? value}`
+       - 其他 → `${label} = ${sanitizeHiddenKeywords(value)}`
+    5. 返回 lines[]
+
+**关键**：不复用 Player 逻辑——两者过滤规则和 sanitize 需求不同。
+
+#### 过滤函数归一化
+
+    function isPlayerVisible(entry) {
+      if (entry.value == null) return false;
+      if (entry.visibility === 'public') return true;
+      if (entry.visibility === 'discoverable' && entry.revealedAt != null) return true;
+      return false;
+    }
+    
+    function isAiVisible(entry) {
+      if (entry.value == null) return false;
+      if (entry.visibility === 'gmOnly') return false;
+      return true;
+    }
+    
+    function isGmVisible(entry) {
+      return true;
+    }
+
+### 任务 3 · GM Console API
+
+#### 命名空间
+
+    window.Horae.identity.gm.*
+
+#### 命令清单
+
+| 命令 | 参数 | 返回 | 说明 |
+|---|---|---|---|
+| gm.help() | — | string | 显示所有命令 |
+| gm.list([filter]) | { kind, visibility } | entry[] | 条件过滤 |
+| gm.get(id) | string | entry \| null | 单条 |
+| gm.set(id, patch) | string, object | entry \| null | 修改（不含 kind） |
+| gm.add(fields) | object | entry | 新增 |
+| gm.remove(id) | string | boolean | 删除 |
+| gm.reveal(id) | string | entry \| null | 揭示 |
+| gm.hide(id) | string | entry \| null | 隐藏 |
+| gm.generate(id) | string | entry \| null | 触发随机生成 |
+| gm.migrate() | — | { ok, count } | 手动迁移 v0.1 → v0.2 |
+| gm.verifyMigration() | — | { ok, issues[] } | 迁移验证 |
+| gm.export() | — | string (JSON) | 导出 |
+| gm.import(json, opts) | string, { dryRun } | { ok, count, diff } | schema 检查 + dry-run |
+| gm.save() | — | boolean | 显式写回角色卡 |
+
+#### gm.set() 约束
+
+- **禁止修改 kind**——要改需 remove + add
+
+#### gm.import() 设计
+
+    gm.import(json, { dryRun = true })
+
+1. 解析 JSON
+2. 检查 schema version（必须 v0.2）
+3. 检查每条 entry 必填字段
+4. dry-run 时返回 diff，不写入
+5. 非 dry-run 时覆盖写入 + 返回 { ok, count }
+
+**默认 dryRun: true**——防止误操作。
+
+#### gm.verifyMigration() 设计
+
+    gm.verifyMigration() → {
+      ok: boolean,
+      issues: [
+        { type: 'missing-entry', kind: 'spiritRoot' },
+        { type: 'value-mismatch', kind: 'talent', legacyValue, entryValue },
+        { type: 'legacy-field-orphan', field: 'foo' },
+      ]
+    }
+
+检查项：
+1. entries 完整（旧字段每个都有对应 entry）
+2. legacy 映射正确（value / display 未丢失）
+3. 无孤儿旧字段
+4. _v === 'v0.2'
+
+#### gm.save()
+
+保留——未来若 identity 有缓存层，需要明确写回入口。当前与 _writeCardIdentity() 等价。
+
+#### 副作用
+
+- 所有 GM 命令**直接修改 chat[0].horae_meta.identity**
+- **不自动写角色卡**——需要 gm.save() 显式触发
+
+#### 日志
+
+每个 GM 命令执行后：
+
+    console.log('[Horae][GM] ' + command + ':', result);
+
+#### 权限边界
+
+GM 命令**不做权限校验**——只有懂技术的设计者会用 Console。
+未来若暴露到 UI 需引入 GM 身份验证，当前不做。
+
+### 任务 4 · 迁移脚本
+
+#### 触发方式（方案 C · 混合）
+
+- 检测 v0.1 → Console 提示
+- 用户手动 `gm.migrate()` 执行
+- **不自动执行**
+
+#### 迁移流程
+
+    1. Console 提示
+    2. 用户调用 gm.migrate()
+    3. 自动执行 gm.export() → 输出到 Console（可复制）
+    4. 遍历旧字段 → 生成 entries
+    5. 设置 _v: 'v0.2'
+    6. 保留旧字段（阶段 A 兼容）
+    7. 写回角色卡
+    8. 输出摘要
+
+#### 备份策略
+
+- **不写入 `_legacyBackup` 到 identity**——避免 identity 数据膨胀
+- 迁移前通过 `gm.export()` 生成**外部临时备份**
+- 迁移脚本自身保留日志
+
+#### 回滚
+
+- 从 gm.export() 保存的 JSON 手动恢复
+- 或从角色卡文件备份恢复
+
+#### 幂等性
+
+- 迁移脚本检查 id._v：
+  - v0.1 → 执行
+  - v0.2 → 跳过
+- 重复调用无副作用
+
+#### 迁移后验证
+
+    1. entries 数量 > 0
+    2. 每条 entry 有 id / kind / value
+    3. 旧字段仍在
+    4. _v === 'v0.2'
+    5. Console 输出摘要：
+       [Horae][GM] migrated: 8 entries from 6 legacy fields
+
+#### 触发点
+
+- SillyTavern 启动时（isInitialized = true 附近）
+- CHAT_CHANGED 时
+- 手动 gm.migrate()
+
+#### 用户通知
+
+- Console 输出（非 UI）
+- 不弹 modal
+- 不弹 toast
+
+**设计目的**：迁移是开发者/设计者行为，玩家不应被打扰。
+
+### 任务 5 · Prompt 注入映射设计
+
+#### 哪些 kind 注入
+
+**全部注入**（除 `gmOnly`）。
+
+#### 核心 kind 顺序（预定义）
+
+    gender → spiritRoot → constitution → bloodline → xianZi
+    → talent → arts → background
+    → goldenFinger → goldenFingerSource
+
+**扩展 kind**：按 createdAt，追加在核心 kind 之后。
+
+#### hidden sanitize 规则
+
+- `playerVisible(e)` → 用 `display ?? value`（不走 sanitize）
+- 其他（hidden / 未揭示 discoverable）→ `sanitizeHiddenKeywords(value)`
+
+依赖：`core/memory/hiddenKeywords.js` 的 `HIDDEN_MAP`。
+
+**未命中的 value**：原样注入
+**不引入"自动打码"机制**——只有 HIDDEN_MAP 命中的才替换。
+
+#### 排序规则
+
+    1. 核心 kind（按预定义顺序）
+    2. 扩展 kind（按 createdAt）
+    3. hidden 条目排在 public 之后
+
+#### Token 控制
+
+现有约束：
+- `_STATE_AUTHORITATIVE_PREDICATES` 已从 facts 层排除 State 类
+
+新增约束（entries 层）：
+- 单条 entry value 超过 N 字符时截断（N 待定，建议 200）
+- 总 identity 段超过 M token 时截断扩展 kind（保留核心 kind）
+- M 待定——需要实测
+
+**暂不做**：token 预算的动态分配。
+
+### 7 项任务关联图
+
+    ┌──────────────────────────────────────┐
+    │ 任务 6 · KIND Registry                │
+    │  (icon/label/order 来源)              │
+    └──────────────┬───────────────────────┘
+                   ↓
+    ┌──────────────────────────────────────┐
+    │ 任务 1 · 双写接口                     │
+    │  setIdentityField / getIdentityField  │
+    │  syncLegacyToEntries                  │
+    └──────────────┬───────────────────────┘
+                   ↓
+    ┌──────────────┼─────────────┬──────────────┐
+    ↓              ↓             ↓              ↓
+    ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
+    │ 任务 2   │ │ 任务 3   │ │ 任务 4   │ │ 任务 7   │
+    │ View     │ │ GM API   │ │ Migration│ │ Version  │
+    └────┬─────┘ └────┬─────┘ └────┬─────┘ └──────────┘
+         │            │            │
+         └────────────┴─────┬──────┘
+                            ↓
+                  ┌─────────────────┐
+                  │ 任务 5 · Prompt  │
+                  │ 注入映射         │
+                  │ (依赖 2 + 6)     │
+                  └─────────────────┘
+
+依赖关系：
+- 任务 5 依赖任务 2（AiEntries）+ 任务 6（Registry）
+- 任务 3 依赖任务 1（接口）
+- 任务 4 依赖任务 1 + 任务 3（verify）
+- 任务 2 依赖任务 6（icon/label 来源）
+
+执行顺序：6 → 1 → 2 → 3 → 4 → 5
+
+### 最终状态
+
+    任务 1~7 设计确认完成
+    下一步：进入代码实现（待启动）
+    不写代码，不改 schema
