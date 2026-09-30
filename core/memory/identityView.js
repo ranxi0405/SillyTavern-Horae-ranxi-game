@@ -109,6 +109,23 @@ function _label(entry, lang, forAI = false) {
 }
 
 /**
+ * 生成隐藏占位符（AI 视角）
+ * 用于 visibility=hidden 或 discoverable 未揭示的条目。
+ * 避免真值泄露，同时告知 AI 该字段存在但不可见。
+ * @param {string} label
+ * @param {string} lang
+ * @returns {string}
+ */
+function _hiddenPlaceholder(label, lang) {
+    if (lang === 'en') return '[Hidden: ' + label + ']';
+    if (lang === 'ja') return '[非公開: ' + label + ']';
+    if (lang === 'ko') return '[숨김: ' + label + ']';
+    if (lang === 'ru') return '[Скрыто: ' + label + ']';
+    if (lang === 'zh-TW') return '[隱藏' + label + ']';
+    return '[隐藏' + label + ']';
+}
+
+/**
  * 解析 icon
  * @param {object} entry
  * @returns {string}
@@ -194,7 +211,22 @@ export function renderIdentityAiEntries(id, opts = {}) {
     const sorted = _sortEntries(visible, { hiddenLast: true });
     return sorted.map(e => {
         const label = _label(e, lang, true);
-        const safe = sanitizeHiddenKeywords(String(e.value));
-        return '· ' + label + ' = ' + safe;
+        const visibility = e.visibility || 'public';
+
+        // visibility 语义：
+        //   public       -> 输出 value
+        //   hidden       -> 占位，不泄露真值
+        //   discoverable -> revealedAt == null 时占位，已揭示输出 value
+        //   gmOnly       -> isAiVisible 已过滤，此处不会命中
+        let displayValue;
+        if (visibility === 'hidden') {
+            displayValue = _hiddenPlaceholder(label, lang);
+        } else if (visibility === 'discoverable' && e.revealedAt == null) {
+            displayValue = _hiddenPlaceholder(label, lang);
+        } else {
+            displayValue = sanitizeHiddenKeywords(String(e.value));
+        }
+
+        return '· ' + label + ' = ' + displayValue;
     });
 }
