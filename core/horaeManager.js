@@ -7,8 +7,6 @@ import { parseStoryDate, calculateRelativeTime, calculateDetailedRelativeTime, g
 import { detectEffectiveAiLangIsZh, detectEffectiveAiLang } from './i18n.js';
 import { getPromptDefaultSync } from './promptDefaults.js';
 import { StateStore } from './memory/stateStore.js';
-import { isIdentityEmpty } from './memory/identityStore.js';
-import { sanitizeHiddenKeywords } from './memory/hiddenKeywords.js';
 
 /**
  * @typedef {Object} HoraeTimestamp
@@ -1867,10 +1865,6 @@ if (sendCharacters) {
             }
         }
         
-        // 角色固有设定（Identity）
-        const identitySection = this._generateIdentitySection();
-        if (identitySection) lines.push(identitySection);
-
         // 已知事实（Facts）
         const relevantActors = this._collectRelevantActors(state, userQuery);
         const factsSection = this._generateFactsSection(relevantActors);
@@ -1925,46 +1919,6 @@ if (sendCharacters) {
     static _STATE_AUTHORITATIVE_PREDICATES = new Set([
         '境界', '修为', '神识', '寿元', '年龄', '持有物', '物品',
     ]);
-
-    /** 生成"角色固有设定"段（从 chat[0].horae_meta.identity 读取，过 sanitize 过滤隐藏词） */
-    _generateIdentitySection() {
-        const id = this.getChat()?.[0]?.horae_meta?.identity;
-        if (!id || isIdentityEmpty(id)) return '';
-
-        const lang = this._getAiOutputLang();
-        const isZh = lang === 'zh-CN' || lang === 'zh-TW';
-        const L = (zh, en) => isZh ? zh : en;
-
-        const lines = [];
-        lines.push(isZh ? '\n[角色固有设定]' : '\n[Character Identity]');
-
-        const pushField = (label, val) => {
-            if (val === null || val === undefined) return;
-            const safe = sanitizeHiddenKeywords(String(val));
-            if (!safe || !safe.trim()) return;
-            lines.push('· ' + label + ' = ' + safe);
-        };
-        const pushArray = (label, arr) => {
-            if (!Array.isArray(arr) || arr.length === 0) return;
-            const safe = arr
-                .map(x => sanitizeHiddenKeywords(String(x)))
-                .filter(x => x && x.trim())
-                .join(' / ');
-            if (!safe) return;
-            lines.push('· ' + label + ' = ' + safe);
-        };
-
-        pushField(L('性别', 'Gender'), id.gender);
-        pushField(L('灵根', 'Spirit Root'), id.spiritRoot);
-        pushField(L('体质', 'Constitution'), id.constitution);
-        pushField(L('仙姿', 'Xian Zi'), id.xianZi);
-        pushArray(L('天赋', 'Talents'), id.talents);
-        pushField(L('血脉', 'Bloodline'), id.bloodline);
-        pushField(L('出身', 'Background'), id.background);
-
-        if (lines.length === 1) return '';
-        return lines.join('\n');
-    }
 
     /** 生成"已知事实"段（从 chat[0].horae_meta.facts 读取 active 条目） */
     _generateFactsSection(relevantActors = null) {

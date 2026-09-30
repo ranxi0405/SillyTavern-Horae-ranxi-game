@@ -230,3 +230,33 @@ export function renderIdentityAiEntries(id, opts = {}) {
         return '· ' + label + ' = ' + displayValue;
     });
 }
+
+/**
+ * 生成 AI Prompt 的 identity 段（含 header）
+ * 与 renderIdentityAiEntries 的区别：本函数返回可直接注入 Prompt 的完整字符串，
+ * 空 identity / 无可见条目时返回 ''，由调用方决定是否拼接。
+ * @param {object} id
+ * @param {object} [opts]
+ * @param {string} [opts.lang='zh-CN']
+ * @returns {string}
+ */
+export function renderIdentityAiSection(id, opts = {}) {
+    const lang = opts.lang || 'zh-CN';
+    const rows = renderIdentityAiEntries(id, { lang });
+    if (!Array.isArray(rows) || rows.length === 0) return '';
+    return _sectionHeader(lang) + '\n' + rows.join('\n');
+}
+
+/**
+ * identity section 的 header（多语言）
+ * @param {string} lang
+ * @returns {string}
+ */
+function _sectionHeader(lang) {
+    if (lang === 'en') return '[Character Identity]';
+    if (lang === 'ja') return '[キャラクター固有設定]';
+    if (lang === 'ko') return '[캐릭터 고유 설정]';
+    if (lang === 'ru') return '[Идентичность персонажа]';
+    if (lang === 'zh-TW') return '[角色固有設定]';
+    return '[角色固有设定]';
+}
