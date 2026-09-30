@@ -104,7 +104,7 @@ P7 补的就是 **NPC 认知层**：
 |---|---|---|
 | key1 | string | NPC 的 `_id`，形如 `'016'` 或 `'N016'`（统一存储格式，见 3.3） |
 | key2 | string | identity entry 的 `id`，如 `'e_legacy_spiritRoot_0'` |
-| `known` | boolean | NPC 是否知道「该设定存在」 |
+| `known` | boolean | NPC 是否已获得该 entry 的认知记录（具体看到"存在"还是真实 value，由 visibility / revealedAt / View 规则决定） |
 | `source` | string | 认知来源分类，枚举见 3.4 |
 | `at` | object | `{ iso, story }`，记录首次获知时间 |
 | `note` | string \| null | 可选备注（自由文本，不影响过滤逻辑） |
@@ -116,6 +116,7 @@ P7 补的就是 **NPC 认知层**：
 - 使用 NPC 的稳定 `_id`，形如 `'016'`（三位补零，与 `padItemId` 一致）
 - **不**使用 NPC 名称作为主键（名称可能被 AI 改名或加别名）
 - 存储时统一为**不带 `N` 前缀的裸数字字符串** `'016'`，展示时加 `N` 前缀
+- 传入 `N016` / `016` 时统一 normalize 为 `'016'` 再存储，避免 `016` / `N016` 两套格式
 - 若 NPC 无 `_id`（尚未分配）→ 该 NPC 的认知**不写入**，等分配后再写
 
 **entryId**
@@ -123,6 +124,8 @@ P7 补的就是 **NPC 认知层**：
 - 使用 identity entry 的 `id`，如 `'e_legacy_spiritRoot_0'`
 - 与 `identity.entries[i].id` 一致
 - 若 entry 被 `gm.remove()` 删除，对应的 `npcKnowledge[*][entryId]` **保留为历史记录**（不主动清理）
+- entryId 永不复用（`gm.remove()` 后新加 entry 会分配新 id）
+- View 遇到 identity 中不存在的 entryId 时**直接忽略**，不报错
 
 ### 3.4 source 枚举
 
@@ -161,7 +164,7 @@ P7 只实现 `'gm_manual'` 与 `'npc_detected'`。
 - **AI** 不可直接写（AI 输出格式不变，`npcKnowledge` 不进入 `<horae>` 标签）
 - **Prompt 层**不可写
 - **identityView** 不可写（View 只读）
-- **identityStore** 不可写
+- **identityStore** 不负责修改 `npcKnowledge`（它管 identity 本体）
 
 ---
 
@@ -198,8 +201,11 @@ P7 只实现 `'gm_manual'` 与 `'npc_detected'`。
 **这是 P7 最关键的概念区分。**
 
     known
-      = NPC 知道「有一个隐藏设定存在」
-      ≠ NPC 知道真实 value
+      = NPC 已获得该 entry 的认知记录
+      = 已建立"某 NPC 知道某 identity entry"的记录
+      → 具体看到"存在"还是真实 value，
+        由 visibility / revealedAt / identityView 规则决定
+      ≠ known = true 就等于知道真实 value
 
     revealedAt
       = identity 层的全局揭示标记
