@@ -1954,6 +1954,7 @@ if (sendCharacters) {
             lines.push('· ' + label + ' = ' + safe);
         };
 
+        pushField(L('性别', 'Gender'), id.gender);
         pushField(L('灵根', 'Spirit Root'), id.spiritRoot);
         pushField(L('体质', 'Constitution'), id.constitution);
         pushField(L('仙姿', 'Xian Zi'), id.xianZi);

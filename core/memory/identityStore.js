@@ -31,9 +31,10 @@ export const IDENTITY_FIELDS = [
     'xianZi',
     'spiritRootDisplay',
     'constitutionDisplay',
+    'gender',
 ];
 
-const STRING_FIELDS = ['spiritRoot', 'constitution', 'bloodline', 'background', 'xianZi'];
+const STRING_FIELDS = ['spiritRoot', 'constitution', 'bloodline', 'background', 'xianZi', 'gender'];
 const ARRAY_FIELDS = ['talents', 'arts'];
 const DISPLAY_FIELDS = ['spiritRootDisplay', 'constitutionDisplay'];
 
@@ -50,6 +51,7 @@ export function emptyIdentity() {
         xianZi: null,
         spiritRootDisplay: null,
         constitutionDisplay: null,
+        gender: null,
     };
 }
 

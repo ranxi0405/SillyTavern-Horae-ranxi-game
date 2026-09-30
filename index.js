@@ -7528,7 +7528,8 @@ function openIdentityEditModal() {
 
     const _talentsStr = Array.isArray(id.talents) ? id.talents.join(' / ') : '';
     const _bodyHtml =
-        _row('horae-identity-sr-real',     t('rpg.identitySpiritRoot') + ' · ' + t('rpg.identityReal'),     id.spiritRoot, '')
+        _row('horae-identity-gender',        t('rpg.identityGender'), id.gender, '')
+      + _row('horae-identity-sr-real',     t('rpg.identitySpiritRoot') + ' · ' + t('rpg.identityReal'),     id.spiritRoot, '')
       + _row('horae-identity-sr-display', t('rpg.identitySpiritRoot') + ' · ' + t('rpg.identityDisplay'), id.spiritRootDisplay, '')
       + _row('horae-identity-cs-real',     t('rpg.identityConstitution') + ' · ' + t('rpg.identityReal'),     id.constitution, '')
       + _row('horae-identity-cs-display',  t('rpg.identityConstitution') + ' · ' + t('rpg.identityDisplay'), id.constitutionDisplay, '')
@@ -7561,6 +7562,7 @@ function openIdentityEditModal() {
         const _talents = _get('horae-identity-talents').replace(/[，,]/g, '/').split('/').map(s => s.trim()).filter(Boolean);
         const _newId = {
             _v: 'v0.1',
+            gender: _parse(_get('horae-identity-gender')),
             spiritRoot: _parse(_get('horae-identity-sr-real')),
             spiritRootDisplay: _parse(_get('horae-identity-sr-display')),
             constitution: _parse(_get('horae-identity-cs-real')),
@@ -7601,6 +7603,7 @@ function renderIdentityPanel() {
     container.style.display = '';
 
     const rows = [];
+    if (id.gender) rows.push(['fa-venus-mars', t('rpg.identityGender'), id.gender, '']);
     const _sr = id.spiritRootDisplay || id.spiritRoot;
     if (_sr) rows.push(['fa-seedling', t('rpg.identitySpiritRoot'), _sr, '']);
     const _cs = id.constitutionDisplay || id.constitution;
