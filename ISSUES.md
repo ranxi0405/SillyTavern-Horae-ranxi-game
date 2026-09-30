@@ -603,3 +603,317 @@ visibility 是当前状态，可被任何剧情机制改变；revealedAt 只回�
 |---|---|
 | `-game` | 完整游戏项目主仓库 |
 | `-ranxi` | 物品系统独立同步仓库 |
+
+---
+
+## 通用角色设定系统 · 详细设计（2026-09-30 定稿）
+
+**状态**：设计定稿，未进入代码实现
+**前置**：见上文"通用角色设定系统（未来架构方向）"章节
+
+### entries[] 数据模型
+
+#### 顶层结构
+
+    {
+      _v: 'v0.2',
+      entries: [ /* entry 数组 */ ],
+    }
+
+#### 单条 entry 字段定义
+
+| 字段 | 类型 | 必填 | 默认 | 说明 |
+|---|---|---|---|---|
+| id | string | 是 | 自动 | 唯一标识，格式 e_<timestamp><random> |
+| kind | string | 是 | — | 类型（核心枚举 + 允许扩展） |
+| value | string / object | 是 | — | 真实值 |
+| display | string / object / null | 否 | null | 玩家展示值，null 表示 = value |
+| visibility | string | 是 | public | 见 visibility 状态机 |
+| generation | string | 是 | fixed | 见 generation 生成方式 |
+| generationConfig | object / null | 否 | null | random* 时的配置 |
+| bound | boolean | 是 | true | 是否与主角永久绑定 |
+| discovery | object / null | 否 | null | 揭示规则 |
+| revealedAt | { iso, story } / null | 否 | null | 揭示时间（记录用） |
+| source | string | 是 | designer | designer / random / system / player |
+| meta | object | 否 | {} | 扩展字段 |
+| createdAt | string | 是 | 自动 | ISO 时间 |
+| updatedAt | string | 是 | 自动 | ISO 时间 |
+| _userEdited | boolean | 否 | false | 用户手动编辑标记 |
+
+#### value 类型规则（Q2 决策）
+
+允许：
+- string（普通设定：灵根 / 体质 / 性别 / 出身）
+- 受限 object（结构化设定：金手指 / 血脉 / 复杂体质）
+
+**受限 object 规则**：
+- 必须是 key-value 平铺结构
+- value 内不再嵌套深层对象
+- 禁止函数 / Symbol / 循环引用
+- 序列化后大小限制（未来定）
+
+#### display 语义（Q4 决策）
+
+- null → 用 value 显示
+- string / object → 覆盖显示
+- **空串不表示"隐藏"**——权限统一由 visibility 控制
+
+#### kind 枚举（Q8 决策：允许扩展）
+
+**核心 kind（Horae 特殊处理）**：
+
+    spiritRoot
+    constitution
+    talent
+    bloodline
+    goldenFinger
+    goldenFingerSource
+    gender
+
+**扩展 kind（通用路径）**：
+
+    system
+    specialMark
+    inheritance
+    destiny
+    karma
+    ...（未来可扩展）
+
+**未知 kind fallback**：走通用路径 + Console 提示，不报错
+
+#### 同 kind 多 entry（Q3 决策）
+
+**允许**。同一 kind 下可以有多个 entry：
+- 公开天赋 × N
+- 隐藏天赋 × N
+- 剧情获得天赋 × N
+
+每条 entry 独立管理 visibility / generation / revealedAt。
+
+### visibility 状态机
+
+#### 四态定义
+
+| 值 | 玩家可见 | AI 可见 | GM 可见 |
+|---|---|---|---|
+| public | 是 | 是，用 value/display | 是 |
+| hidden | 否 | 过 sanitize | 是 |
+| discoverable | 未揭示隐藏 / 已揭示显示 | 同左 | 是 |
+| gmOnly | 否 | 完全不注入 | 是 |
+
+#### 允许的状态转换
+
+无强制单向流，任意转换都允许：
+
+    public → hidden            （封印 / 伪装 / 记忆封锁）
+    hidden → public            （直接揭示）
+    hidden → discoverable      （进入可发现状态）
+    discoverable → public      （满足条件揭示）
+    discoverable → hidden      （取消揭示）
+    gmOnly → hidden            （GM 决定降级）
+
+#### revealedAt 与 visibility 的关系
+
+- revealedAt **只记录历史**，不参与权限判断
+- 决定"玩家能不能看到"的唯一依据是 visibility
+- discoverable + revealedAt != null 的显示等效于 public
+
+判定代码：
+
+    const playerVisible = (e) =>
+      e.visibility === 'public' ||
+      (e.visibility === 'discoverable' && e.revealedAt != null);
+
+#### revealedAt 格式（Q5 决策）
+
+    {
+      iso: '2026-09-30T12:00:00Z',   // 程序排序 / 逻辑判断
+      story: '342年12月24日 08:35',   // 游戏展示
+    }
+
+### generation 生成方式
+
+#### 三态
+
+| 值 | 触发时机 |
+|---|---|
+| fixed | 卡创建时已确定 |
+| randomAtCreation | 首次 CHAT_CHANGED 时随机 |
+| randomAtEvent | 剧情事件触发时随机 |
+
+#### generationConfig 结构
+
+    {
+      pool: [
+        { value: '签到系统', weight: 1, display: null },
+        { value: '万界交易系统', weight: 2 },
+      ],
+      unique: true,       // 是否排除已生成
+      seed: null,         // 固定种子（可复现）
+      rerollable: false,  // 是否允许重新生成
+    }
+
+#### 执行主体（关键原则）
+
+随机结果**必须由 Horae 程序执行**，不允许 AI 生成。
+
+理由：
+- AI 每次 Prompt 重新生成会产生不同结果
+- 需要持久化到 entries
+- 需要与"已生成"标记配合
+
+#### 未生成状态（Q6 决策）
+
+generation != 'fixed' 且未生成时：
+
+    {
+      value: null,
+      generation: 'randomAtCreation',
+      generationConfig: { ... },
+      _notGenerated: true,
+    }
+
+显示策略：
+- Prompt 注入：跳过
+- Player View：跳过
+- GM View：显示 `[未生成]`
+
+### 迁移策略
+
+#### 三阶段（Q1 决策）
+
+**阶段 A · 双写**：
+- identity 同时维护旧字段 + entries[]
+- _v 升级为 v0.2
+- 读取：优先 entries，fallback 旧字段
+- 写入：双写（旧字段 + entries）
+
+**阶段 B · 迁移脚本**：
+- 一次性把旧字段转为 entries（Q7 决策：一次迁移，不懒迁移）
+- 保留 backup
+- 删除旧字段
+
+**阶段 C · 废弃**：
+- 确认全链路走 entries
+- 删除旧字段兼容代码
+
+### View 层设计
+
+#### Player View
+
+过滤规则：
+
+    entries.filter(e =>
+      e.visibility === 'public' ||
+      (e.visibility === 'discoverable' && e.revealedAt != null)
+    );
+
+显示值：`e.display ?? e.value`
+
+**显示字段**：
+- kind → i18n label
+- value → display ?? value
+
+**不显示**：gmOnly / hidden / 未揭示 discoverable
+
+#### GM View（入口：Console 命令，非 UI）
+
+    Horae.identity.gm.list()                    // 列出所有 entries
+    Horae.identity.gm.get(id)                   // 读取单个
+    Horae.identity.gm.set(id, { value, ... })   // 修改
+    Horae.identity.gm.reveal(id)                // 手动揭示
+    Horae.identity.gm.generate(id)              // 触发随机生成
+
+**显示**：全部 entries + visibility 徽章 + generation 徽章 + revealedAt 时间
+
+#### 界面隔离原则
+
+- Player View 是**唯一玩家可见**的入口
+- GM View 走 Console（故意不做 UI）
+- 不加眼睛按钮 / 不加 settings.gmMode
+
+### AI Prompt 注入
+
+过滤规则：
+
+    entries
+      .filter(e => e.visibility !== 'gmOnly')
+      .filter(e => e.value != null)
+      .map(e => {
+        const label = i18n(e.kind);
+        if (playerVisible(e)) {
+          return `${label} = ${e.display ?? e.value}`;
+        }
+        return `${label} = ${sanitizeHiddenKeywords(e.value)}`;
+      });
+
+排序：
+1. 核心 kind 优先（按预定义顺序）
+2. 扩展 kind 按 createdAt
+3. hidden 条目排后（AI 优先看到 public）
+
+### 揭示机制
+
+#### discovery 规则结构
+
+    discovery: {
+      trigger: 'breakthrough_to_jindan',
+      conditions: {
+        realm: '金丹',
+        minContribution: 100,
+      },
+      once: true,
+      autoReveal: true,
+    }
+
+#### 揭示流程
+
+1. 剧情事件发生（如突破金丹）
+2. 事件匹配 discovery.conditions
+3. 若 autoReveal → 自动 revealedAt = { iso, story }
+4. visibility 保持 discoverable 或由剧情改为 public
+
+**注意**：revealedAt 赋值本身**不改 visibility**——但如果 visibility 是 discoverable，赋值后 Player View 就会显示。
+
+### 8 个已确认的设计决策
+
+| # | 决策点 | 结论 |
+|---|---|---|
+| Q1 | _v 版本字段 | A · 升级到 v0.2，旧字段 + entries 并存 |
+| Q2 | value 类型范围 | C · string + 受限 object |
+| Q3 | 同 kind 是否允许多条 | A · 允许 |
+| Q4 | display 语义 | A · null = 用 value；string/object = 覆盖 |
+| Q5 | revealedAt 格式 | C · { iso, story } 双字段 |
+| Q6 | generation 未生成行为 | C · GM View 显示 `[未生成]`，其他跳过 |
+| Q7 | 迁移方式 | A · 一次迁移，不懒迁移 |
+| Q8 | source 取值 | B · 允许扩展字符串，提供默认枚举 |
+
+### 明确不做的部分
+
+| 项 | 原因 |
+|---|---|
+| 不写代码 | 设计阶段 |
+| 不改 identity schema | 等设计确认 |
+| 不做迁移 | 等代码改造范围确定 |
+| 不做 GM View UI | 走 Console 命令，不做界面 |
+| 不做眼睛按钮 | 玩家可能误触 |
+| 不加 settings.gmMode | 任何玩家可开关都是风险 |
+| 不让 AI 负责随机 | 必须由 Horae 执行 |
+| 不做跳跃式迁移 | 三阶段走 |
+| 不做随机池 UI | 后续单独设计 |
+
+### 后续改造前置条件
+
+**当前阶段（2026-09-30）**：
+- 只记录架构方向，不进入代码实现
+
+**真正改造时的优先顺序**：
+1. **优先确定 identityStore 与 View 层迁移方案**
+2. 再考虑 entries[] 写入
+3. 最后做 View 层实现
+
+**具体前置任务**：
+- 确定 entries[] 与旧字段的双写接口
+- 确定 View 层渲染函数签名
+- 确定 GM Console 命令的 API 形状
+- 确定迁移脚本的一次性执行时机
