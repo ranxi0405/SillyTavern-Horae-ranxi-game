@@ -25,6 +25,7 @@ import {
     syncLegacyToEntries,
     syncLegacyMirror,
 } from './identityStore.js';
+import { applyDiscover, applyReveal } from './identityDiscovery.js';
 import {
     detectVersion,
     needsMigration,
@@ -220,25 +221,7 @@ export function createIdentityGmApi(ctx) {
             if (!id) return null;
             const entry = _findEntry(id, entryId);
             if (!entry) { _warn('未找到 entry: ' + entryId); return null; }
-            const now = new Date().toISOString();
-            if (!entry.discovery || typeof entry.discovery !== 'object') {
-                entry.discovery = {
-                    type: 'manual',
-                    trigger: null,
-                    requirement: null,
-                    progress: 0,
-                    discoveredAt: null,
-                    meta: {},
-                };
-            }
-            if (entry.discovery.discoveredAt == null) {
-                entry.discovery.discoveredAt = {
-                    iso: now,
-                    story: (opts && opts.story) || null,
-                };
-            }
-            entry.updatedAt = now;
-            return _log('discover', entry);
+            return _log('discover', applyDiscover(entry, opts));
         },
 
         reveal(entryId, opts = {}) {
@@ -247,15 +230,7 @@ export function createIdentityGmApi(ctx) {
             if (!id) return null;
             const entry = _findEntry(id, entryId);
             if (!entry) { _warn('未找到 entry: ' + entryId); return null; }
-            const now = new Date().toISOString();
-            const story = (opts && opts.story) || null;
-            if (!entry.revealedAt) {
-                entry.revealedAt = { iso: now, story };
-            } else {
-                if (story) entry.revealedAt.story = story;
-            }
-            entry.updatedAt = now;
-            return _log('reveal', entry);
+            return _log('reveal', applyReveal(entry, opts));
         },
 
         hide(entryId) {

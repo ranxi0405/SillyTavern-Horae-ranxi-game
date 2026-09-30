@@ -339,3 +339,52 @@ P6.3 改动清单（预告）：
 | 版本 | 日期 | 变更 |
 |---|---|---|
 | v0.1 | 2026-09-30 | 初稿（P6.1） |
+
+---
+
+## 13. P6.3 实现边界
+
+P6.3 首版只实现 `condition` 类型，其余类型 schema 保留供未来扩展。
+
+### 当前实现
+
+| 类型 | 数据源 | 支持 |
+|---|---|---|
+| `condition` | state（rpg / affection / items） | ✅ |
+
+### condition 支持的 4 个 key
+
+| key | 数据源 | 语义 |
+|---|---|---|
+| `senseRealm` | `state.rpg.spirit.tier` | 神识段位达到或超过阈值（蒙昧 < 清明 < 凝照 < 洞玄 < 明心 < 太虚） |
+| `realm` | `state.rpg.realm.name` | 大境界名完全匹配 |
+| `affinityMin` | `state.affection[npc]` | `{ npc, min }` 好感度 ≥ min |
+| `itemHeld` | `state.items[name]` | 持有某物品（存在即满足） |
+
+### 暂缓类型（schema 保留）
+
+- `event`：需 AI 输出结构化 eventId，牵动 Prompt / 解析
+- `item`：需 item 事件钩子
+- `npc`：依赖 P7 NPC 认知系统
+
+### 触发时机
+
+`CHARACTER_MESSAGE_RENDERED` 后，`onMessageReceived` 里 state 结算完成后。
+
+### 落盘
+
+只改内存，依赖 Horae 常规 `saveChat()`。
+
+### 编排
+
+```
+condition evaluator (evaluateEntry / evaluateAll)
+        ↓
+action list（不直接改 identity）
+        ↓
+runDiscovery 编排
+        ↓
+applyDiscover / applyReveal（唯一状态修改入口）
+```
+
+GM API `discover()` / `reveal()` 也调用同一套 `apply*` 函数。

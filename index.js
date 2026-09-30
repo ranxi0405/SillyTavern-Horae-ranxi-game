@@ -17,6 +17,7 @@ import { DirectorStore } from './core/memory/directorStore.js';
 import { ThreadStore } from './core/memory/threadStore.js';
 import { sanitizeHiddenKeywords, setActiveHiddenMap } from './core/memory/hiddenKeywords.js';
 import { renderIdentityAiSection } from './core/memory/identityView.js';
+import { runDiscovery } from './core/memory/identityDiscovery.js';
 import { validateIdentity, normalizeIdentity, emptyIdentity, isIdentityEmpty } from './core/memory/identityStore.js';
 import { createIdentityGmApi } from './core/memory/identityGmApi.js';
 import { calculateRelativeTime, calculateDetailedRelativeTime, formatRelativeTime, generateTimeReference, getCurrentSystemTime, formatStoryDate, formatFullDateTime, parseStoryDate } from './utils/timeUtils.js';
@@ -20994,6 +20995,21 @@ async function onMessageReceived(messageId) {
             horaeManager.rebuildRelationships();
             horaeManager.rebuildLocationMemory();
             horaeManager.rebuildRpgData();
+        }
+
+        // P6.3c: AI 回复完成后评估 identity discovery 条件
+        // state 已结算完成，只改内存，依赖下方常规 saveChat 落盘
+        try {
+            const _identity = chat?.[0]?.horae_meta?.identity;
+            if (_identity) {
+                const _state = horaeManager.getLatestState(0);
+                const _r = runDiscovery(_identity, _state);
+                if (_r.applied.length > 0) {
+                    console.log('[Horae] identity discovery applied:', _r.applied);
+                }
+            }
+        } catch (e) {
+            console.warn('[Horae] identity discovery 评估失败:', e);
         }
 
         if (!_summaryInProgress) {
