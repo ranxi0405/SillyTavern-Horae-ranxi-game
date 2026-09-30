@@ -14,6 +14,7 @@ const REL_FILES = [
     'core/memory/identityKindRegistry.js',
     'core/memory/identityStore.js',
     'core/memory/identityView.js',
+    'core/memory/identityDiscovery.js',
     'core/memory/identitySchemaVersion.js',
     'core/memory/identityGmApi.js',
 ];
