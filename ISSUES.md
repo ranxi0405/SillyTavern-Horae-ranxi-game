@@ -532,3 +532,44 @@ visibility 是当前状态，可被任何剧情机制改变；revealedAt 只回�
 - 不让 AI 负责随机
 - 不做跳跃式迁移
 - 不把 hidden 加进任何玩家可见 UI
+
+---
+
+## P1 · Persona 瘦身（已完成 2026-09-30）
+
+### 目标
+
+把 SillyTavern Persona 从"游戏全状态镜像"收缩为"玩家人格/自由文本"。
+
+### 完成内容
+
+**代码支持**：
+
+- identityStore.js 加 gender 字段
+- index.js B3c-4 modal 加 gender input
+- index.js renderIdentityPanel 加 gender 渲染
+- horaeManager.js _generateIdentitySection 加 gender 注入
+- locales zh-CN / en 加 identityGender
+
+**数据修正**：
+
+- identity.talents 从 ['过目不忘1'] 修正为 ['过目不忘', '气运加身', '桃花运']
+- 通过 B3c-4 modal 完成，验证链路正常
+
+**Persona 瘦身**：
+
+- 从约 20 段收缩为 5 段
+- 保留：本名 / 性格 / 家庭 / 功德业力 / 隐藏情感倾向
+- 删除：道号 / 基本信息 / 基础属性 / 当前状态 / 灵根 / 体质 / 天赋 / 外貌 / 六艺 / 资源 / 随身物品 / 隐藏设定占位
+
+### 副作用
+
+- 项目 0 处读 persona，瘦身对 Horae 无影响
+- ST 原生 persona 预览更新，不涉及其他功能
+
+### 未完成 / 后续
+
+- Identity View / GM View 改造（modal 泄漏真实值）
+- 通用角色设定系统（entries[] 迁移）
+- 功德/业力归属（等声望/因果系统设计）
+- 碎银归属（已确认不迁移，从 Persona 删除即可）
