@@ -346,3 +346,189 @@
 2. 检查 `meta.deletedItems` 是否被多次合并
 3. 检查 baseName 匹配逻辑
 4. **不与 B4 Phase 1 验证混合**
+
+---
+
+## 通用角色设定系统（未来架构方向）
+
+**状态**：设计阶段，P1 完成后单独启动
+**不做**：不写代码、不改 schema、不做迁移
+
+### 背景
+
+当前 identity 是固定字段集合（spiritRoot / constitution / talents / ...），无法表达以下需求：
+
+- 开局随机抽取金手指 / 系统
+- 设计者预埋隐藏设定
+- 剧情触发后揭示的隐藏血脉
+- 同一角色同时存在公开和隐藏天赋
+- 某个设定与主角永久绑定
+
+需要把 identity 从"固定字段"升级为"角色设定条目集合"。
+
+### 核心模型
+
+每个"角色设定"是一个条目：
+
+    {
+      id: 'id_xxx',
+      kind: 'spiritRoot',        // 类型（核心受控 + 允许扩展）
+      value: '无界灵根',          // 真实值
+      display: '四系伪灵根',      // 玩家可见值（可选，无则 = value）
+
+      visibility: 'hidden',       // 见字段语义
+      generation: 'fixed',        // 见字段语义
+      generationConfig: {         // generation=random* 时用
+        pool: [...],
+        weights: [...],
+        unique: true,
+      },
+
+      bound: true,                // 是否与主角永久绑定
+      discovery: {                // 揭示规则（可选）
+        trigger: 'breakthrough_to_jindan',
+        once: true,
+      },
+      revealedAt: null,           // 已揭示的剧情时间（记录用，不限制状态转换）
+      source: 'designer',         // designer / random / system / player
+      meta: {},                   // 扩展字段
+    }
+
+identity 结构升级：
+
+    {
+      _v: 'v0.2',
+      entries: [ /* 上面这种条目数组 */ ],
+    }
+
+### 字段语义
+
+#### kind（核心受控 + 允许扩展）
+
+核心 kind：spiritRoot / constitution / talent / bloodline / goldenFinger（金手指）/ goldenFingerSource（金手指来源）
+
+**允许扩展**：specialMark / system / inheritance / destiny / ...
+Horae 对核心 kind 有特殊处理，扩展 kind 走通用路径。
+
+#### visibility（当前玩家认知状态）
+
+| 值 | 含义 | 玩家可见 | AI 可见 |
+|---|---|---|---|
+| public | 开局公开 | 是 | 是，用 value/display |
+| hidden | 玩家不知 | 否 | 过 sanitize |
+| discoverable | 当前隐藏，可揭示 | 未揭示前否 | 同 hidden |
+| gmOnly | 只有 GM 知道 | 否 | 完全不注入 |
+
+**可以运行时变化**，不是单向流：
+
+- hidden → public（直接揭示）
+- hidden → discoverable（进入可发现状态）
+- discoverable → public（满足条件揭示）
+- public → hidden（封印 / 伪装 / 记忆封锁）
+- 任何其他转换
+
+**`revealedAt` 仅用于记录揭示历史**，不作为限制 visibility 状态转换的唯一依据。
+visibility 是当前状态，可被任何剧情机制改变；revealedAt 只回答"什么时候被揭示过"，不回答"能不能被揭示"。
+
+#### generation（生成方式）
+
+| 值 | 含义 |
+|---|---|
+| fixed | 设计者预设定 |
+| randomAtCreation | 开局随机抽 |
+| randomAtEvent | 剧情触发时随机 |
+
+**关键原则**：随机结果由 Horae / 程序确定并持久化，AI 只负责根据已确定的结果进行剧情表现。
+**不允许 AI 负责随机**——否则同一存档多次生成 Prompt 会产生不同结果。
+
+#### bound（绑定关系）
+
+| 值 | 含义 |
+|---|---|
+| true | 主角专属，不转移（灵根 / 体质 / 金手指） |
+| false | 可转移（预留） |
+
+### 字段职责（明确分离）
+
+三个字段承担完全不同的职责，**不得混用**：
+
+| 字段 | 职责 | 回答的问题 |
+|---|---|---|
+| value | 真实值 | "角色本质上是什么" |
+| visibility | 权限控制 | "玩家当前能不能看到这个设定" |
+| display | 展示内容 | "玩家看到的时候显示什么" |
+
+**关键约束**：
+
+- visibility 是**唯一的权限层**，决定玩家能否看到条目
+- display **不是权限控制**——它只是"当玩家被允许看到时，显示什么文案"
+- 即使 display 存在，只要 visibility 不是 public（且未揭示），玩家也看不到
+- value 是真实数据，永远不直接展示给玩家（除 visibility=public 且无 display 时）
+
+### 覆盖场景
+
+| 场景 | kind | value | visibility | generation | bound |
+|---|---|---|---|---|---|
+| 签到系统 | goldenFinger | 签到系统 | public | randomAtCreation | true |
+| 无界灵根 | spiritRoot | 无界灵根 | hidden | fixed | true |
+| 无界道体 | constitution | 无界道体 | hidden | fixed | true |
+| 隐藏血脉 | bloodline | 某血脉 | discoverable | randomAtEvent | true |
+| 金手指来源 | goldenFingerSource | 未知存在 | gmOnly | fixed | true |
+| 隐藏天赋 | talent | 某天赋 | hidden | randomAtCreation | true |
+| 公开天赋 | talent | 过目不忘 | public | fixed | true |
+
+### View 分离
+
+**Player View**：只显示 visibility=public 或 已揭示的 discoverable，显示值 = display ?? value。
+
+**GM View**：显示全部条目。
+
+- public / 已揭示 discoverable：正常显示
+- hidden：显示 value + 徽章
+- discoverable 未揭示：显示 value + 待揭示徽章 + trigger
+- gmOnly：显示 value + GM 徽章
+- randomAtCreation 未生成：显示 `[未生成]` 占位
+  - **[未生成] 的具体 UI 处理、生成按钮、触发时机，暂不设计**
+  - 随机池 / 权重 / 随机种子 / 重复生成保护 / 可复现随机等细节，将来单独设计
+
+**GM 入口隔离**：
+
+- 不做 UI 开关（任何开关都可能被玩家找到）
+- GM 编辑 = Console 命令（如 Horae.identity.setReal(...)）
+- 批量编辑 = ST 角色卡编辑器直接改 JSON
+
+### AI Prompt 注入
+
+    entries
+      .filter(e => e.visibility !== 'gmOnly')   // gmOnly 永不注入
+      .map(e => {
+        if (e.visibility === 'public') return label + ' = ' + (e.display ?? e.value);
+        if (e.visibility === 'discoverable' && e.revealedAt) return label + ' = ' + (e.display ?? e.value);
+        // hidden / discoverable 未揭示
+        return label + ' = ' + sanitizeHiddenKeywords(e.value);
+      });
+
+### 迁移路径（未来，非现在）
+
+| 阶段 | 内容 |
+|---|---|
+| A · 双写 | identity 同时维护旧字段 + entries[]，写入双写，读取优先 entries |
+| B · 迁移脚本 | 一次性把旧字段转为 entries，保留备份 |
+| C · 废弃旧字段 | 确认全链路走 entries，删旧字段 |
+
+**不做跳跃式迁移。**
+
+### 与当前 P1 的关系
+
+- gender 已加入 identity.gender（旧 schema）
+- 将来统一迁移到 entries[]
+- P1 不做 schema 迁移
+- P1 完成后，单独进入本设计阶段
+
+### 明确不做
+
+- 不加"眼睛按钮"（玩家可能误触）
+- 不加 settings.gmMode 让玩家可开关
+- 不让 AI 负责随机
+- 不做跳跃式迁移
+- 不把 hidden 加进任何玩家可见 UI
