@@ -103,7 +103,8 @@ export function createIdentityGmApi(ctx) {
                 '    set(id, patch)               - 修改 entry（禁止改 kind）',
                 '    add(fields)                  - 新增 entry',
                 '    remove(id)                   - 删除 entry',
-                '    reveal(id)                   - 揭示（设置 revealedAt）',
+                '    discover(id, opts)           - 发现（设置 discovery.discoveredAt，AI 视角不变）',
+                '    reveal(id, opts)             - 揭示（设置 revealedAt，AI 切换到 value）',
                 '    hide(id)                     - 隐藏（visibility=hidden）',
                 '    generate(id)                 - 触发随机生成（占位）',
                 '    import(json, {dryRun})       - 导入 entries（默认 dryRun）',
@@ -213,14 +214,46 @@ export function createIdentityGmApi(ctx) {
             return _log('remove', removed);
         },
 
-        reveal(entryId) {
+        discover(entryId, opts = {}) {
+            if (!entryId) return _log('discover', null);
+            const id = _getOrThrow();
+            if (!id) return null;
+            const entry = _findEntry(id, entryId);
+            if (!entry) { _warn('未找到 entry: ' + entryId); return null; }
+            const now = new Date().toISOString();
+            if (!entry.discovery || typeof entry.discovery !== 'object') {
+                entry.discovery = {
+                    type: 'manual',
+                    trigger: null,
+                    requirement: null,
+                    progress: 0,
+                    discoveredAt: null,
+                    meta: {},
+                };
+            }
+            if (entry.discovery.discoveredAt == null) {
+                entry.discovery.discoveredAt = {
+                    iso: now,
+                    story: (opts && opts.story) || null,
+                };
+            }
+            entry.updatedAt = now;
+            return _log('discover', entry);
+        },
+
+        reveal(entryId, opts = {}) {
             if (!entryId) return _log('reveal', null);
             const id = _getOrThrow();
             if (!id) return null;
             const entry = _findEntry(id, entryId);
             if (!entry) { _warn('未找到 entry: ' + entryId); return null; }
             const now = new Date().toISOString();
-            entry.revealedAt = { iso: now, story: null };
+            const story = (opts && opts.story) || null;
+            if (!entry.revealedAt) {
+                entry.revealedAt = { iso: now, story };
+            } else {
+                if (story) entry.revealedAt.story = story;
+            }
             entry.updatedAt = now;
             return _log('reveal', entry);
         },
