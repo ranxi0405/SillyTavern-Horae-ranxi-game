@@ -153,6 +153,26 @@ P6.5b 文档后续章节严格按本节的语义展开。
   - 主持人：决定何时揭露
 - **`gmOnly` entry 永不输出**（AI 也看不到）
 
+**与 P4.4 hiddenKeywords 的关系**：
+
+- AI View **读取** canonical value，不代表最终 Prompt 中**原样出现**
+- 最终注入 Prompt 前，value 会经过既有 `sanitizeHiddenKeywords` 脱敏层（P4.4）
+- 两层职责独立：
+  - **P6.5.1**：决定「输出 value 还是 display」，display 异于 value 时附注对外
+  - **P4.4 hiddenKeywords**：决定「哪些敏感真值在最终 Prompt 中被替换」
+- 因此若角色卡配了 `hiddenKeywords: { '无界灵根': '[隐藏灵根]' }`，
+  AI 视角的最终输出会是：
+  ```
+  · 灵根 = [隐藏灵根]（对外：四系伪灵根）
+  ```
+  这是**两层机制叠加的正确结果**，不是 P6.5.1 的 bug
+- 若某角色卡**未配** hiddenKeywords，则 AI 视角输出：
+  ```
+  · 灵根 = 无界灵根（对外：四系伪灵根）
+  ```
+  未脱敏的 canonical value 会直接进入 Prompt
+- 角色卡作者**可自行选择**是否配置 hiddenKeywords
+
 **输出格式（双层）**：
 
 - 若 `display` 存在且 `display != value`：`· 灵根 = 无界灵根（对外：四系伪灵根）`

@@ -212,23 +212,16 @@ export function renderIdentityAiEntries(id, opts = {}) {
     const sorted = _sortEntries(visible, { hiddenLast: true });
     return sorted.map(e => {
         const label = _label(e, lang, true);
-        const visibility = e.visibility || 'public';
-
-        // visibility 语义：
-        //   public       -> 输出 value
-        //   hidden       -> 占位，不泄露真值
-        //   discoverable -> revealedAt == null 时占位，已揭示输出 value
-        //   gmOnly       -> isAiVisible 已过滤，此处不会命中
-        let displayValue;
-        if (visibility === 'hidden') {
-            displayValue = _hiddenPlaceholder(label, lang);
-        } else if (visibility === 'discoverable' && e.revealedAt == null) {
-            displayValue = _hiddenPlaceholder(label, lang);
-        } else {
-            displayValue = sanitizeHiddenKeywords(String(e.value));
+        // P6.5: AI 天道视角读 canonical value；
+        // display 若非空且异于 value，附注「对外：<display>」供描述 NPC 视角。
+        // gmOnly 由 isAiVisible 过滤。
+        const safeValue = sanitizeHiddenKeywords(String(e.value));
+        const rawDisplay = e.display != null ? String(e.display) : null;
+        const safeDisplay = rawDisplay ? sanitizeHiddenKeywords(rawDisplay) : null;
+        if (safeDisplay && safeDisplay !== safeValue) {
+            return '· ' + label + ' = ' + safeValue + '（对外：' + safeDisplay + '）';
         }
-
-        return '· ' + label + ' = ' + displayValue;
+        return '· ' + label + ' = ' + safeValue;
     });
 }
 
