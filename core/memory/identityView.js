@@ -28,6 +28,7 @@ import {
     getExtendedKindIcon,
 } from './identityKindRegistry.js';
 import { sanitizeHiddenKeywords } from './hiddenKeywords.js';
+import { hasKnown } from './npcKnowledge.js';
 
 // ═══════════════════════════════════════════════════════════════
 // 过滤函数
@@ -259,4 +260,64 @@ function _sectionHeader(lang) {
     if (lang === 'ru') return '[Идентичность персонажа]';
     if (lang === 'zh-TW') return '[角色固有設定]';
     return '[角色固有设定]';
+}
+
+/**
+ * 渲染 NPC 视角 rows（按 npcKnowledge 过滤）
+ *
+ * 与 renderIdentityAiEntries 的区别：
+ *   - AI 是天道视角：hidden 一律占位
+ *   - NPC 只有 known 才看得到；hidden + known → value
+ *   - discoverable + known + 未 reveal → 占位（知道存在，不知内容）
+ *
+ * @param {object} id - identity 对象
+ * @param {string} npcId - NPC 的 _id（'016' / 'N016' 均可，内部 normalize）
+ * @param {object} knowledge - chat[0].horae_meta.npcKnowledge
+ * @param {object} [opts]
+ * @param {string} [opts.lang='zh-CN']
+ * @param {'ai'|'public'} [opts.valueMode] - 占位，P7 未实现，P6.5 定案后使用
+ * @returns {string[]} 每行 '· label = value'
+ */
+export function renderIdentityNpcRows(id, npcId, knowledge, opts = {}) {
+    const lang = opts.lang || 'zh-CN';
+    const entries = getIdentityEntries(id, { includeNotGenerated: false });
+    const sorted = _sortEntries(entries, { hiddenLast: true });
+    const out = [];
+    for (const e of sorted) {
+        const r = _resolveNpcEntry(e, knowledge, npcId, lang);
+        if (r) out.push('· ' + r.label + ' = ' + r.value);
+    }
+    return out;
+}
+
+/**
+ * 单条 entry 的 NPC 视角解析
+ * @param {object} entry
+ * @param {object} knowledge
+ * @param {string} npcId
+ * @param {string} lang
+ * @returns {{label:string, value:string}|null}
+ */
+function _resolveNpcEntry(entry, knowledge, npcId, lang) {
+    if (!entry || entry.value == null) return null;
+    const vis = entry.visibility || 'public';
+    if (vis === 'gmOnly') return null;
+    const label = _label(entry, lang, true);
+
+    // public：始终输出
+    if (vis === 'public') {
+        return { label, value: sanitizeHiddenKeywords(String(entry.value)) };
+    }
+    // revealedAt 有：真相已公开（hidden / discoverable 都适用）
+    if (entry.revealedAt) {
+        return { label, value: sanitizeHiddenKeywords(String(entry.value)) };
+    }
+    // 未 reveal + hidden/discoverable：需 known
+    if (!hasKnown(knowledge, npcId, entry.id)) return null;
+    // hidden + known → NPC 已获真知
+    if (vis === 'hidden') {
+        return { label, value: sanitizeHiddenKeywords(String(entry.value)) };
+    }
+    // discoverable + known + 未 reveal → 知道存在，不知内容
+    return { label, value: _hiddenPlaceholder(label, lang) };
 }

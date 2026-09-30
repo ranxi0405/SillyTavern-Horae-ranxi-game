@@ -1505,6 +1505,14 @@ function _publishHoraeApi() {
         saveCard: async (id) => {
             try { return await _writeCardIdentity(id); } catch (_) { return false; }
         },
+        getNpcKnowledgeMap: () => {
+            const meta = horaeManager.getChat()?.[0]?.horae_meta;
+            if (!meta) return null;
+            if (!meta.npcKnowledge || typeof meta.npcKnowledge !== 'object') {
+                meta.npcKnowledge = {};
+            }
+            return meta.npcKnowledge;
+        },
     });
 
     const api = Object.freeze({
@@ -21000,10 +21008,14 @@ async function onMessageReceived(messageId) {
         // P6.3c: AI 回复完成后评估 identity discovery 条件
         // state 已结算完成，只改内存，依赖下方常规 saveChat 落盘
         try {
-            const _identity = chat?.[0]?.horae_meta?.identity;
+            const _meta = chat?.[0]?.horae_meta;
+            const _identity = _meta?.identity;
             if (_identity) {
                 const _state = horaeManager.getLatestState(0);
-                const _r = runDiscovery(_identity, _state);
+                if (!_meta.npcKnowledge || typeof _meta.npcKnowledge !== 'object') {
+                    _meta.npcKnowledge = {};
+                }
+                const _r = runDiscovery(_identity, _state, { knowledge: _meta.npcKnowledge });
                 if (_r.applied.length > 0) {
                     console.log('[Horae] identity discovery applied:', _r.applied);
                 }

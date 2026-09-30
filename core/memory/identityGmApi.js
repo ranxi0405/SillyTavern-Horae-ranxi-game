@@ -26,6 +26,7 @@ import {
     syncLegacyMirror,
 } from './identityStore.js';
 import { applyDiscover, applyReveal } from './identityDiscovery.js';
+import { applyNpcKnow, applyNpcForget } from './npcKnowledge.js';
 import {
     detectVersion,
     needsMigration,
@@ -56,7 +57,7 @@ export function createIdentityGmApi(ctx) {
     if (!ctx || typeof ctx !== 'object') {
         throw new Error('[IdentityGmApi] ctx required');
     }
-    const { getIdentity, setIdentity, saveCard } = ctx;
+    const { getIdentity, setIdentity, saveCard, getNpcKnowledgeMap } = ctx;
     if (typeof getIdentity !== 'function') {
         throw new Error('[IdentityGmApi] ctx.getIdentity must be a function');
     }
@@ -107,6 +108,8 @@ export function createIdentityGmApi(ctx) {
                 '    discover(id, opts)           - 发现（设置 discovery.discoveredAt，AI 视角不变）',
                 '    reveal(id, opts)             - 揭示（设置 revealedAt，AI 切换到 value）',
                 '    hide(id)                     - 隐藏（visibility=hidden）',
+                '    npcKnow(npcId, entryId, opts) - 记录 NPC 对 entry 的认知',
+                '    npcForget(npcId, entryId)    - 删除 NPC 对 entry 的认知',
                 '    generate(id)                 - 触发随机生成（占位）',
                 '    import(json, {dryRun})       - 导入 entries（默认 dryRun）',
                 '',
@@ -242,6 +245,24 @@ export function createIdentityGmApi(ctx) {
             entry.visibility = 'hidden';
             entry.updatedAt = new Date().toISOString();
             return _log('hide', entry);
+        },
+
+        npcKnow(npcId, entryId, opts = {}) {
+            if (!npcId || !entryId) return _log('npcKnow', null);
+            if (typeof getNpcKnowledgeMap !== 'function') { _warn('ctx.getNpcKnowledgeMap 未注入'); return null; }
+            const knowledge = getNpcKnowledgeMap();
+            if (!knowledge) return _log('npcKnow', null);
+            const rec = applyNpcKnow(knowledge, entryId, npcId, opts);
+            return _log('npcKnow', rec);
+        },
+
+        npcForget(npcId, entryId) {
+            if (!npcId || !entryId) return _log('npcForget', false);
+            if (typeof getNpcKnowledgeMap !== 'function') { _warn('ctx.getNpcKnowledgeMap 未注入'); return false; }
+            const knowledge = getNpcKnowledgeMap();
+            if (!knowledge) return _log('npcForget', false);
+            const ok = applyNpcForget(knowledge, entryId, npcId);
+            return _log('npcForget', ok);
         },
 
         generate(entryId) {

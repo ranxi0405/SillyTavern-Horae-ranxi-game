@@ -30,6 +30,8 @@
  *   }
  */
 
+import { applyNpcKnow, hasKnown } from './npcKnowledge.js';
+
 const SENSE_TIER_ORDER = ['蒙昧', '清明', '凝照', '洞玄', '明心', '太虚'];
 
 function _nowIso() {
@@ -164,21 +166,34 @@ export function evaluateEntry(entry, state) {
     if (entry.visibility !== 'discoverable') return null;
     const d = entry.discovery;
     if (!d || typeof d !== 'object') return null;
-    if (d.type !== 'condition') return null;
-    const req = d.requirement;
-    if (!req || typeof req !== 'object') return null;
 
-    // reveal 优先（若条件都满足）
-    if (req.revealAt && _matchAll(req.revealAt, state)) {
-        if (!entry.revealedAt) {
-            return { entryId: entry.id, action: 'reveal', reason: 'revealAt matched' };
+    if (d.type === 'condition') {
+        const req = d.requirement;
+        if (!req || typeof req !== 'object') return null;
+        // reveal 优先（若条件都满足）
+        if (req.revealAt && _matchAll(req.revealAt, state)) {
+            if (!entry.revealedAt) {
+                return { entryId: entry.id, action: 'reveal', reason: 'revealAt matched' };
+            }
         }
-    }
-    if (req.discoverAt && _matchAll(req.discoverAt, state)) {
-        if (!d.discoveredAt) {
-            return { entryId: entry.id, action: 'discover', reason: 'discoverAt matched' };
+        if (req.discoverAt && _matchAll(req.discoverAt, state)) {
+            if (!d.discoveredAt) {
+                return { entryId: entry.id, action: 'discover', reason: 'discoverAt matched' };
+            }
         }
+        return null;
     }
+
+    if (d.type === 'npc') {
+        if (!d.npcId) return null;
+        const req = d.requirement;
+        if (!req || typeof req !== 'object') return null;
+        if (_matchAll(req, state)) {
+            return { entryId: entry.id, action: 'npcKnow', npcId: d.npcId, reason: 'npc requirement matched' };
+        }
+        return null;
+    }
+
     return null;
 }
 
@@ -208,8 +223,19 @@ export function evaluateAll(identity, state) {
 export function runDiscovery(identity, state, opts = {}) {
     const actions = evaluateAll(identity, state);
     if (actions.length === 0) return { actions: [], applied: [] };
+    const knowledge = (opts && opts.knowledge) || null;
     const applied = [];
     for (const a of actions) {
+        if (a.action === 'npcKnow') {
+            if (!knowledge) continue;
+            if (hasKnown(knowledge, a.npcId, a.entryId)) continue;
+            applyNpcKnow(knowledge, a.entryId, a.npcId, {
+                source: 'npc_detected',
+                story: (opts && opts.story) || null,
+            });
+            applied.push(a);
+            continue;
+        }
         const entry = identity.entries.find(e => e && e.id === a.entryId);
         if (!entry) continue;
         if (a.action === 'discover') {
