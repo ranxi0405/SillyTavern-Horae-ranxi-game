@@ -573,3 +573,33 @@ visibility 是当前状态，可被任何剧情机制改变；revealedAt 只回�
 - 通用角色设定系统（entries[] 迁移）
 - 功德/业力归属（等声望/因果系统设计）
 - 碎银归属（已确认不迁移，从 Persona 删除即可）
+
+---
+
+## 旧仓库物品同步 · 已完成（2026-09-30）
+
+### 执行结果
+
+- 目标仓库：`SillyTavern-Horae-ranxi`
+- 新 HEAD：`930cc5e`
+- 同步 commit message：`sync(items): B4 item delta semantics + Bug Y console.log removal`
+- 误推 `964262e`（ISSUES.md）已通过 force push 从历史和远端清除
+
+### 同步内容
+
+- Bug Y：`core/horaeManager.js` 删 2 行 console.log
+- Item Delta 规则补强：6 语言 `prompts/{lang}/customSystemPrompt.txt`
+- 归档脚本：`tools/patch-horae-ranxi-sync-items.mjs`
+
+### 明确不同步
+
+- Persona / identity / gender / 通用角色设定系统
+- `<horae>` 强制约束
+- 其他非物品内容
+
+### 职责边界（最终确认）
+
+| 仓库 | 职责 |
+|---|---|
+| `-game` | 完整游戏项目主仓库 |
+| `-ranxi` | 物品系统独立同步仓库 |
