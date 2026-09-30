@@ -91,6 +91,19 @@ export function normalizeIdentity(raw) {
     }
     base.hidden = raw.hidden === true;
 
+    // v0.2 schema 字段：保留 _v 与 entries
+    // 否则每次 save 都会把 _v 重置回 v0.1、丢掉 entries，导致无限重迁移
+    if (typeof raw._v === 'string' && raw._v.trim()) {
+        base._v = raw._v.trim();
+    }
+    if (Array.isArray(raw.entries)) {
+        try {
+            base.entries = JSON.parse(JSON.stringify(raw.entries));
+        } catch (_) {
+            base.entries = raw.entries.slice();
+        }
+    }
+
     return base;
 }
 
@@ -262,7 +275,10 @@ export function getIdentityEntries(id, opts = {}) {
     if (id._v === IDENTITY_VERSION_V02 && Array.isArray(id.entries)) {
         list = id.entries.map(_normalizeEntry).filter(Boolean);
     } else {
-        list = _deriveEntriesFromLegacy(id);
+        // 懒迁移：v0.1 → v0.2（mutate id，保证后续读路径一致）
+        // 幂等：迁移后 id._v='v0.2' + id.entries 存在，二次调用走上面的 v0.2 分支
+        const r = syncLegacyToEntries(id);
+        list = (r.entries || []).map(_normalizeEntry).filter(Boolean);
     }
     if (opts.includeNotGenerated === false) {
         list = list.filter(e => e.value != null);
