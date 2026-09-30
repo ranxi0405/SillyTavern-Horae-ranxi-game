@@ -14,10 +14,10 @@
  *   - rollback 留占位（阶段 4 才实现）
  *
  * 阶段 4 补充：
- *   - 更复杂的迁移规则（字段别名、数据清洗）
- *   - 更严格的 verify（entries 与 legacy 逐字段对比）
- *   - 真正的 rollback（从外部备份 JSON 恢复）
- *   - 触发时机与 Console 提示
+ *   - migrate 支持 backup（结构化深拷贝）
+ *   - rollback 全量原地恢复（不调 syncLegacyMirror）
+ *   - v0.2 缺 entries 且 legacy 为空 → 拒绝迁移，不改动
+ *   - backup 仅通过 migrate 返回值带出，不持久化
  *
  * 依赖：
  *   - identityStore.js（版本常量 / getIdentityEntries / syncLegacyToEntries / LEGACY_FIELD_MAP）
@@ -38,6 +38,28 @@ export const SUPPORTED_VERSIONS = [SCHEMA_VERSION_LEGACY, SCHEMA_VERSION_CURRENT
 
 // verify 时参与一致性检查的标量 kind
 const _SCALAR_KINDS_FOR_VERIFY = ['gender', 'spiritRoot', 'constitution', 'bloodline', 'xianZi', 'background'];
+
+// ─── 内部：深拷贝（structuredClone 优先，JSON 兜底） ───
+function _clone(obj) {
+    if (obj == null || typeof obj !== 'object') return obj;
+    if (typeof structuredClone === 'function') {
+        try { return structuredClone(obj); } catch (_) { /* fall through */ }
+    }
+    return JSON.parse(JSON.stringify(obj));
+}
+
+// ─── 内部：legacy 是否有可用内容 ───
+function _hasLegacyFields(id) {
+    if (!id || typeof id !== 'object') return false;
+    for (const field of Object.values(LEGACY_FIELD_MAP)) {
+        const v = id[field];
+        if (v === undefined || v === null) continue;
+        if (Array.isArray(v) && v.length === 0) continue;
+        if (typeof v === 'string' && v.trim() === '') continue;
+        return true;
+    }
+    return false;
+}
 
 // ─── 版本检测 ───
 
@@ -81,18 +103,8 @@ export function migrate(id, opts = {}) {
 
     const fromVersion = detectVersion(id);
 
-    if (fromVersion === SCHEMA_VERSION_CURRENT) {
-        // 边界：v0.2 但 entries 缺失 → 从 legacy 恢复
-        if (!Array.isArray(id.entries)) {
-            const recovered = syncLegacyToEntries(id);
-            return {
-                ok: true, reason: 'repairedMissingEntries',
-                fromVersion, toVersion: SCHEMA_VERSION_CURRENT,
-                migratedCount: recovered.migratedCount,
-                entries: recovered.entries,
-                verify: verify(id),
-            };
-        }
+    // 已就绪：不动，不生成 backup
+    if (fromVersion === SCHEMA_VERSION_CURRENT && Array.isArray(id.entries)) {
         return {
             ok: true, reason: 'alreadyCurrent',
             fromVersion, toVersion: SCHEMA_VERSION_CURRENT,
@@ -100,6 +112,7 @@ export function migrate(id, opts = {}) {
         };
     }
 
+    // 不支持的版本：不动，不生成 backup
     if (fromVersion === 'unknown') {
         return {
             ok: false, reason: 'unsupportedVersion',
@@ -108,7 +121,34 @@ export function migrate(id, opts = {}) {
         };
     }
 
-    // v0.1 → v0.2（阶段 1 已实现 syncLegacyToEntries）
+    // v0.2 但 entries 缺失：先判 legacy 是否有内容
+    if (fromVersion === SCHEMA_VERSION_CURRENT) {
+        if (!_hasLegacyFields(id)) {
+            // 无法修复：不改动，不生成 backup
+            return {
+                ok: false, reason: 'entriesMissingAndLegacyEmpty',
+                fromVersion, toVersion: SCHEMA_VERSION_CURRENT,
+                migratedCount: 0, entries: [],
+            };
+        }
+        const backup = (opts && opts.backup && typeof opts.backup === 'object')
+            ? opts.backup
+            : _clone(id);
+        const recovered = syncLegacyToEntries(id);
+        return {
+            ok: true, reason: 'repairedMissingEntries',
+            fromVersion, toVersion: SCHEMA_VERSION_CURRENT,
+            migratedCount: recovered.migratedCount,
+            entries: recovered.entries,
+            backup,
+            verify: verify(id),
+        };
+    }
+
+    // v0.1 → v0.2：正常迁移
+    const backup = (opts && opts.backup && typeof opts.backup === 'object')
+        ? opts.backup
+        : _clone(id);
     const result = syncLegacyToEntries(id);
     const vResult = verify(id);
     return {
@@ -116,6 +156,7 @@ export function migrate(id, opts = {}) {
         fromVersion, toVersion: SCHEMA_VERSION_CURRENT,
         migratedCount: result.migratedCount,
         entries: result.entries,
+        backup,
         verify: vResult,
     };
 }
@@ -181,6 +222,20 @@ export function verify(id) {
 export function rollback(id, backup = null) {
     if (!id || typeof id !== 'object') return { ok: false, reason: 'notObject' };
     if (!backup || typeof backup !== 'object') return { ok: false, reason: 'noBackup' };
-    // 阶段 4 实现真正的恢复逻辑
-    return { ok: false, reason: 'notImplemented' };
+    if (backup === id) return { ok: false, reason: 'backupIsSameObject' };
+
+    try {
+        for (const k of Object.keys(id)) delete id[k];
+        const restored = _clone(backup);
+        for (const k of Object.keys(restored)) id[k] = restored[k];
+    } catch (e) {
+        return { ok: false, reason: 'assignFailed', error: String(e) };
+    }
+
+    const v = verify(id);
+    return {
+        ok: v.ok,
+        reason: v.ok ? 'restored' : 'restoredWithIssues',
+        verify: v,
+    };
 }
