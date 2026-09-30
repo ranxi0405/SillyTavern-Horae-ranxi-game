@@ -265,24 +265,24 @@ P6.1 §4.2 已预留：
         requirement: { affinityMin: 60 },
     }
 
-P7.4 将实现该类型。触发流程：
+P7.4 已实现该类型。触发流程：
 
     1. discovery 评估（evaluateEntry）
        ↓
     2. 满足 requirement（如 affinityMin）
        ↓
-    3. 调 applyDiscover(entry)         // P6.3 已实现
+    3. 调 applyNpcKnow(entryId, npcId)  // P7.4 唯一写入
        ↓
-    4. 调 applyNpcKnow(entryId, npcId) // P7.4 新增
-       ↓
-    5. 写 npcKnowledge[npcId][entryId].known = true
+    4. 写 npcKnowledge[npcId][entryId].known = true
 
 **注意**：
 
-- `applyDiscover`（P6.3）写 `entry.discovery.discoveredAt`
-- `applyNpcKnow`（P7.4）写 `npcKnowledge[npcId][entryId]`
-- 两者是**独立写入**，职责不同
-- `applyDiscover` 是 entry 级（全局），`applyNpcKnow` 是 npc 级（针对特定 NPC）
+- `type: 'npc'` 满足后**只写 `npcKnowledge`**，**不写** `entry.discovery.discoveredAt`
+- 这与 `type: 'condition'` 的全局发现路径**正交**：
+  - `condition` 满足 → 写 `entry.discovery.discoveredAt`（全局）
+  - `npc` 满足 → 写 `npcKnowledge[npcId][entryId]`（针对特定 NPC）
+- 若某 entry 需要同时触发"全局发现 + NPC 私知"，应显式配置为两条独立规则
+- 两者都走 `core/memory/npcKnowledge.js` 的 `applyNpcKnow`（唯一状态修改入口）
 
 边界：
 

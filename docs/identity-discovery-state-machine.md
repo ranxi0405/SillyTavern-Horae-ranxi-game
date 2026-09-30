@@ -361,11 +361,17 @@ P6.3 首版只实现 `condition` 类型，其余类型 schema 保留供未来扩
 | `affinityMin` | `state.affection[npc]` | `{ npc, min }` 好感度 ≥ min |
 | `itemHeld` | `state.items[name]` | 持有某物品（存在即满足） |
 
+### 已实现类型（P7 补充）
+
+- `npc`：P7.4 已实现（依赖 P7.2 npcKnowledge 模块）
+  - 满足 requirement 后只写 `npcKnowledge[npcId][entryId]`
+  - **不写** `entry.discovery.discoveredAt`（与 `condition` 正交）
+  - 与 P6.1 §4.2 预留 schema 一致
+
 ### 暂缓类型（schema 保留）
 
 - `event`：需 AI 输出结构化 eventId，牵动 Prompt / 解析
 - `item`：需 item 事件钩子
-- `npc`：依赖 P7 NPC 认知系统
 
 ### 触发时机
 
@@ -384,7 +390,7 @@ action list（不直接改 identity）
         ↓
 runDiscovery 编排
         ↓
-applyDiscover / applyReveal（唯一状态修改入口）
+applyDiscover / applyReveal / applyNpcKnow（唯一状态修改入口）
 ```
 
 GM API `discover()` / `reveal()` 也调用同一套 `apply*` 函数。
