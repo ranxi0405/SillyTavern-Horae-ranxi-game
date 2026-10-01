@@ -227,20 +227,50 @@ AI 是剧情主持人，不是 GM。AI 只能使用「当前世界中已被确�
 
 ### 5.1 Player 视角
 
-| visibility | revealedAt | 输出 |
-|---|---|---|
-| `public` | — | `display` 优先，无则 `value` |
-| `hidden` | `null` | `display` 优先，无则 `[隐藏{label}]` |
-| `hidden` | 有 | `value` |
-| `discoverable` | `null` | `display` 优先，无则 `[隐藏{label}]` |
-| `discoverable` | 有 | `value` |
-| `gmOnly` | — | 不输出 |
+Player 是**主角本人视角**，模拟主角当前认知，不是世界真值视角。
+
+**统一判定规则**（按顺序）：
+
+1. `gmOnly` → 不输出
+2. `value == null` → 不输出（基础准入）
+3. `revealedAt != null` → 使用 `value`（主角已获真相）
+4. 未 reveal + `display` 有效 → 使用 `display`
+5. 未 reveal + `public` + 无 `display` → 使用 `value`
+6. 未 reveal + `hidden` / `discoverable` + 无 `display` → **不输出**
+
+**display 有效性定义**：
+
+- `display == null` → 无 display
+- `display == undefined` → 无 display
+- `display == ''` → 无 display
+- `display == '   '` → 无 display
+- `display == '四系伪灵根'` → 有 display
+
+**完整矩阵**：
+
+| visibility | revealedAt | display | 输出 |
+|---|---|---|---|
+| `public` | — | 有 | `display` |
+| `public` | — | 无 | `value` |
+| `public` | 有 | 任意 | `value` |
+| `hidden` | `null` | 有 | `display` |
+| `hidden` | `null` | 无 | **不输出** |
+| `hidden` | 有 | 任意 | `value` |
+| `discoverable` | `null` | 有 | `display` |
+| `discoverable` | `null` | 无 | **不输出** |
+| `discoverable` | 有 | 任意 | `value` |
+| `gmOnly` | — | 任意 | **不输出** |
 
 **说明**：
 
-- `public`：主角看到的对外身份（若 display 存在），或真相
-- `hidden + 未 reveal`：主角不知道真身，看到对外说法，或无对外说法则占位
-- `revealedAt != null`：主角已知真身，看 `value`（不再优先 display）
+- Player 视角与 AI 视角严格区分：
+  - **AI**：读取 canonical value，最终经 hiddenKeywords 脱敏后注入 Prompt
+  - **Player**：模拟主角当前认知——主角不知道的真相不显示
+- `revealedAt != null` 表示主角**已获得真实内容**，此时不再使用 `display`（display 成为历史认知）
+- `hidden` / `discoverable` + 未 reveal + 无有效 display → **不输出**（主角完全不知道这条 entry 存在，UI 不应凭空显示占位）
+  - 与 AI 视角不同：AI 视角有占位语义（告知天道），Player 视角无占位语义（UI 噪音）
+- `gmOnly` 永不进入 Player View
+- `value == null` 由 `isPlayerVisible` 基础准入过滤
 
 ### 5.2 AI（剧情主持）视角
 

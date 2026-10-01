@@ -41,9 +41,8 @@ import { hasKnown } from './npcKnowledge.js';
  */
 export function isPlayerVisible(entry) {
     if (!entry || entry.value == null) return false;
-    if (entry.visibility === 'public') return true;
-    if (entry.visibility === 'discoverable' && entry.revealedAt != null) return true;
-    return false;
+    if (entry.visibility === 'gmOnly') return false;
+    return true;
 }
 
 /**
@@ -152,12 +151,33 @@ export function renderIdentityPlayerRows(id, opts = {}) {
     const entries = getIdentityEntries(id, { includeNotGenerated: false });
     const visible = entries.filter(isPlayerVisible);
     const sorted = _sortEntries(visible);
-    return sorted.map(e => ({
-        icon: _icon(e),
-        label: _label(e, lang, false),
-        value: (e.display != null) ? e.display : e.value,
-        extraCls: (e.kind === 'bloodline') ? 'horae-rpg-field-icon--bloodline' : '',
-    }));
+    const rows = [];
+    for (const e of sorted) {
+        const vis = e.visibility || 'public';
+        const revealed = e.revealedAt != null;
+        const hasDisplay = e.display != null && String(e.display).trim() !== '';
+
+        let value;
+        if (revealed) {
+            value = e.value;
+        } else if (hasDisplay) {
+            value = e.display;
+        } else if (vis === 'public') {
+            value = e.value;
+        } else {
+            // hidden / discoverable + 未 reveal + 无有效 display
+            // → 主角完全不知道，跳过
+            continue;
+        }
+
+        rows.push({
+            icon: _icon(e),
+            label: _label(e, lang, false),
+            value,
+            extraCls: (e.kind === 'bloodline') ? 'horae-rpg-field-icon--bloodline' : '',
+        });
+    }
+    return rows;
 }
 
 /** visibility 徽章映射 */
