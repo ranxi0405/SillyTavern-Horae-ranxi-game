@@ -210,19 +210,33 @@ export function renderIdentityAiEntries(id, opts = {}) {
     const entries = getIdentityEntries(id, { includeNotGenerated: false });
     const visible = entries.filter(isAiVisible);
     const sorted = _sortEntries(visible, { hiddenLast: true });
-    return sorted.map(e => {
-        const label = _label(e, lang, true);
-        // P6.5: AI 天道视角读 canonical value；
-        // display 若非空且异于 value，附注「对外：<display>」供描述 NPC 视角。
-        // gmOnly 由 isAiVisible 过滤。
-        const safeValue = sanitizeHiddenKeywords(String(e.value));
-        const rawDisplay = e.display != null ? String(e.display) : null;
-        const safeDisplay = rawDisplay ? sanitizeHiddenKeywords(rawDisplay) : null;
-        if (safeDisplay && safeDisplay !== safeValue) {
-            return '· ' + label + ' = ' + safeValue + '（对外：' + safeDisplay + '）';
+    const rows = [];
+    for (const e of sorted) {
+        const vis = e.visibility || 'public';
+        const revealed = e.revealedAt != null;
+        const hasDisplay = e.display != null && String(e.display).trim() !== '';
+
+        // P6.5.1b: AI View = 世界当前认知（不是 GM 全知）
+        //   revealedAt != null  → value（世界已确认真相）
+        //   未 reveal + display → display（世界当前认知）
+        //   未 reveal + public + 无 display → value
+        //   未 reveal + hidden/discoverable + 无 display → 不输出
+        // 不输出 [隐藏{label}] 占位（占位本身是信息泄露）
+        // 不输出「对外：display」双层（display 就是世界当前认知）
+        // discovery.discoveredAt 有值不影响输出（由剧情上下文体现）
+        let output;
+        if (revealed) {
+            output = sanitizeHiddenKeywords(String(e.value));
+        } else if (hasDisplay) {
+            output = sanitizeHiddenKeywords(String(e.display));
+        } else if (vis === 'public') {
+            output = sanitizeHiddenKeywords(String(e.value));
+        } else {
+            continue;
         }
-        return '· ' + label + ' = ' + safeValue;
-    });
+        rows.push('· ' + _label(e, lang, true) + ' = ' + output);
+    }
+    return rows;
 }
 
 /**

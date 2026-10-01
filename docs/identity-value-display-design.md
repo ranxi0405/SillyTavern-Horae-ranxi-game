@@ -43,7 +43,7 @@ P6.5 只解决一个问题：
 
 ## 2. 核心原则
 
-四条不可违反：
+五条不可违反：
 
 1. **`identity` = 世界真相**  
    `value` 是真相。`display` 不是真值，是**对外公开认知**。  
@@ -61,7 +61,19 @@ P6.5 只解决一个问题：
    Prompt 只接收 View 的输出。  
    Prompt 不直接读 raw identity，不直接读 raw display，不直接读 raw npcKnowledge。
 
----
+5. **View 的知识边界**（P6.5.1b 新增）  
+   
+   `visibility` 描述的是**信息在世界中的公开程度**，不代表 AI 可以读取真实数据。  
+   AI 作为剧情主持，只能使用**当前世界已知事实**。
+   
+   | 视角 | 知识范围 |
+   |---|---|
+   | GM | 真实数据 |
+   | AI（剧情主持） | 世界当前认知 |
+   | Player | 主角当前认知 |
+   | NPC | 该 NPC 当前认知 |
+   
+   后续所有 View 按此原则扩展，**不要**把 AI 当 GM。
 
 ## 3. 字段语义
 
@@ -140,47 +152,50 @@ P6.5b 文档后续章节严格按本节的语义展开。
 - 隐瞒的来源：可能是失忆 / 封印 / 家族保密 / 剧情设定
 - `display` 就是「主角自己也不知道真相时，以为的自己」
 
-### 4.2 AI（天道视角）
+### 4.2 AI（剧情主持视角）
 
 **主体**：剧情主持 AI。
 
-**认知**：**对非 gmOnly entry 的全知视角**。
+**认知**：**世界当前认知**，不是 GM 全知。
 
-- AI View 对**非 `gmOnly`** entry 可读取 **canonical value**
-- AI 同时读取 `display` 作为「世界公开认知」，用于描述 NPC 视角
-- AI 是「天道 + 主持人」双重身份：
-  - 天道：可读取所有非 `gmOnly` 的 canonical truth
-  - 主持人：决定何时揭露
-- **`gmOnly` entry 永不输出**（AI 也看不到）
+AI 是剧情主持人，不是 GM。AI 只能使用「当前世界中已被确认的事实」，
+不能读取任何未在世界中公开的隐藏信息。
+
+**判定规则**（与 Player View 一致的认知边界）：
+
+1. `gmOnly` → 不输出
+2. `value == null` → 不输出（基础准入）
+3. `revealedAt != null` → 使用 `value`（世界已确认真相）
+4. 未 reveal + `display` 有效 → 使用 `display`（世界当前认知）
+5. 未 reveal + `public` + 无 `display` → 使用 `value`
+6. 未 reveal + `hidden` / `discoverable` + 无 `display` → **不输出**
+
+**display 有效性定义**：
+
+- `display == null` / `undefined` / `''` / `'   '` → 无 display
+- 其余 → 有 display
+
+**关键差异（vs P6.5.1 旧设计）**：
+
+- **不输出 `[隐藏{label}]` 占位**——占位符本身就告知 AI「存在隐藏设定」，是信息泄露
+- **不输出「对外：display」双层**——`display` 就是世界当前认知，直接输出即可
+- `discovery.discoveredAt` 有值**不影响** AI 输出——「发现异常」应由剧情上下文体现，不是 identity Prompt 主动告知
+
+**与 GM 的区别**：
+
+- GM：读取全部真实数据（value + display + visibility + revealedAt + discovery）
+- AI：只读取世界当前认知（display / value），不读取任何隐藏信息
+
+**与 Player 的区别**（当前数据结构下）：
+
+- 判定逻辑完全一致
+- 输出格式不同：Player 输出 `{ icon, label, value, extraCls }`（UI 对象），AI 输出 `['· label = value']`（Prompt 字符串）
 
 **与 P4.4 hiddenKeywords 的关系**：
 
-- AI View **读取** canonical value，不代表最终 Prompt 中**原样出现**
-- 最终注入 Prompt 前，value 会经过既有 `sanitizeHiddenKeywords` 脱敏层（P4.4）
-- 两层职责独立：
-  - **P6.5.1**：决定「输出 value 还是 display」，display 异于 value 时附注对外
-  - **P4.4 hiddenKeywords**：决定「哪些敏感真值在最终 Prompt 中被替换」
-- 因此若角色卡配了 `hiddenKeywords: { '无界灵根': '[隐藏灵根]' }`，
-  AI 视角的最终输出会是：
-  ```
-  · 灵根 = [隐藏灵根]（对外：四系伪灵根）
-  ```
-  这是**两层机制叠加的正确结果**，不是 P6.5.1 的 bug
-- 若某角色卡**未配** hiddenKeywords，则 AI 视角输出：
-  ```
-  · 灵根 = 无界灵根（对外：四系伪灵根）
-  ```
-  未脱敏的 canonical value 会直接进入 Prompt
-- 角色卡作者**可自行选择**是否配置 hiddenKeywords
-
-**输出格式（双层）**：
-
-- 若 `display` 存在且 `display != value`：`· 灵根 = 无界灵根（对外：四系伪灵根）`
-- 若 `display` 为空或等于 `value`：`· 灵根 = 无界灵根`
-- `gmOnly`：不输出
-
-**关键决策**：AI 视角**不再输出 `[隐藏{label}]` 占位**。  
-理由：AI 是天道，知道真相。占位对 AI 无意义，且会丢失「对外公开说法」信息。
+- `sanitizeHiddenKeywords` 仍作为最终输出前的脱敏层
+- 若角色卡配了 hiddenKeywords，AI 看到的 display 若含该词也会被替换
+- 这属于 P4.4 层面，与 P6.5.1b 的视角决策正交
 
 ### 4.3 GM（全知）
 
@@ -227,23 +242,29 @@ P6.5b 文档后续章节严格按本节的语义展开。
 - `hidden + 未 reveal`：主角不知道真身，看到对外说法，或无对外说法则占位
 - `revealedAt != null`：主角已知真身，看 `value`（不再优先 display）
 
-### 5.2 AI 视角
+### 5.2 AI（剧情主持）视角
 
-| visibility | revealedAt | 输出 |
-|---|---|---|
-| `public` | — | `value`（`display` 若异则附注对外） |
-| `hidden` | `null` | `value`（`display` 若异则附注对外） |
-| `hidden` | 有 | `value`（`display` 若异则附注对外） |
-| `discoverable` | `null` | `value`（`display` 若异则附注对外） |
-| `discoverable` | 有 | `value`（`display` 若异则附注对外） |
-| `gmOnly` | — | 不输出 |
+| visibility | revealedAt | display | 输出 |
+|---|---|---|---|
+| `public` | — | 有 | `display` |
+| `public` | — | 无 | `value` |
+| `public` | 有 | 任意 | `value` |
+| `hidden` | `null` | 有 | `display` |
+| `hidden` | `null` | 无 | **不输出** |
+| `hidden` | 有 | 任意 | `value` |
+| `discoverable` | `null` | 有 | `display` |
+| `discoverable` | `null` | 无 | **不输出** |
+| `discoverable` | 有 | 任意 | `value` |
+| `gmOnly` | — | 任意 | **不输出** |
 
 **说明**：
 
-- AI 是天道，**永远看 value**
-- `revealedAt` 对 AI 不改变输出（AI 已知真相）
-- 若 `display` 存在且 `!= value`，附注「对外：<display>」——供 AI 描述 NPC 视角
-- **AI 视角不再有 `[隐藏{label}]` 占位**（与 P4.3 现有行为不同）
+- AI 是**剧情主持**，不是 GM 全知
+- AI 只能使用「世界当前认知」——未 reveal 时看 `display`，reveal 后看 `value`
+- **不输出 `[隐藏{label}]` 占位**：占位符会告知 AI「存在隐藏设定」，是信息泄露
+- **不输出「对外：display」双层**：`display` 就是世界当前认知，直接输出
+- `discovery.discoveredAt` 有值不影响输出——应由剧情上下文体现
+- 判定逻辑与 §5.1 Player View 一致（除输出格式）
 
 ### 5.3 GM 视角
 
