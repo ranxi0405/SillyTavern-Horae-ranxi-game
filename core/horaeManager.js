@@ -6,6 +6,7 @@
 import { parseStoryDate, calculateRelativeTime, calculateDetailedRelativeTime, generateTimeReference, formatRelativeTime, formatFullDateTime, getRelativeTimeMeta, setCustomCalendar } from '../utils/timeUtils.js';
 import { detectEffectiveAiLangIsZh, detectEffectiveAiLang } from './i18n.js';
 import { getPromptDefaultSync } from './promptDefaults.js';
+import { calcCultivationSegment } from './rpgUtils.js';
 import { StateStore } from './memory/stateStore.js';
 
 /**
@@ -1529,6 +1530,47 @@ if (sendCharacters) {
                     lines.push(`${_ctxPre(userName, _cUoB)}${tierLabel}：${tierVal} · ${xpLabel} ${xpVal}`);
                 }
             }
+
+            // 境界 / 修为 / 年龄 / 寿元（RPG 状态事实源）
+            // 修为 segment 语义：cur/max 为「当前小境界阶段进度」，非大境界总上限
+            // StateStore 原始 [cur, max] 保持不变，本段只读不写
+            if (rpg.realm && typeof rpg.realm.name === 'string' && rpg.realm.name) {
+                const _realmParts = [];
+                const _realmName = rpg.realm.name;
+                let _phase = null;
+                let _segCur = null;
+                let _segMax = null;
+                if (Array.isArray(rpg.cultivation) && rpg.cultivation.length >= 2) {
+                    const _cur = rpg.cultivation[0];
+                    const _seg = calcCultivationSegment(_cur, _realmName);
+                    if (_seg) {
+                        _phase = _seg.phase;
+                        _segCur = _seg.segCur;
+                        _segMax = _seg.segMax;
+                    }
+                }
+                const _realmStr = _phase ? `${_realmName}·${_phase}` : _realmName;
+                _realmParts.push(`${L('境界','Realm','境界','경지','Царство')} ${_realmStr}`);
+                if (_segCur != null && _segMax != null && _segMax !== Infinity) {
+                    _realmParts.push(`${L('修为','Cultivation','修為','수련','Культив.')} ${_segCur}/${_segMax}（${L('当前阶段','current stage','現段階','현 단계','текущая стадия')}）`);
+                }
+                if (typeof rpg.age === 'number' && typeof rpg.lifespan === 'number') {
+                    _realmParts.push(`${L('年龄','Age','年齢','나이','Возраст')} ${rpg.age}/${rpg.lifespan}`);
+                }
+                if (_realmParts.length > 0 && (!filterRpg || rpgAllowed.has(userName))) {
+                    lines.push(`${_ctxPre(userName, _cUoB)}${_realmParts.join(' | ')}`);
+                }
+            }
+
+            // RPG 状态使用规则（结构化事实源约束）
+            lines.push(`\n[${L('RPG状态使用规则','RPG State Usage Rules','RPG状態使用ルール','RPG 상태 사용 규칙','Правила использования RPG-состояния')}]`);
+            lines.push(L(
+                '以上为当前结构化 RPG 事实：描述角色的境界、修为、年龄、寿元、气血、灵力、神念、神识时以本段为准；不得使用其他上下文旧数值覆盖；小境界以本段系统阶段为准，不得自行重判；不得虚构、修改或补写本段未提供的 RPG 数值；未提供的派生值（如剩余寿元）不得自行计算后当作系统事实；不得生成与本段数据冲突的角色状态面板。',
+                'The above is the current structured RPG facts: when describing a character realm, cultivation, age, lifespan, HP, MP, spirit, or spiritual sense, use this section as the source of truth; do not override with old values from other contexts; sub-stages use the system-provided stage, do not re-determine; do not fabricate, modify, or fill in RPG values not provided here; derived values not provided (e.g. remaining lifespan) must not be calculated and presented as system facts; do not generate a character status panel that conflicts with this section.',
+                'The above is the current structured RPG facts. Use this section as the source of truth. Do not override with old values. Do not re-determine sub-stages. Do not fabricate RPG values not provided here.',
+                'The above is the current structured RPG facts. Use this section as the source of truth.',
+                'The above is the current structured RPG facts. Use this section as the source of truth.'
+            ));
 
             if (sendSkills && Object.keys(rpg.skills).length > 0) {
                 const hasAny = Object.entries(rpg.skills).some(([n, arr]) =>

@@ -17,6 +17,7 @@ import { DirectorStore } from './core/memory/directorStore.js';
 import { ThreadStore } from './core/memory/threadStore.js';
 import { sanitizeHiddenKeywords, setActiveHiddenMap } from './core/memory/hiddenKeywords.js';
 import { renderIdentityAiSection } from './core/memory/identityView.js';
+import { calcCultivationSegment } from './core/rpgUtils.js';
 import { runDiscovery } from './core/memory/identityDiscovery.js';
 import { validateIdentity, normalizeIdentity, emptyIdentity, isIdentityEmpty } from './core/memory/identityStore.js';
 import { createIdentityGmApi } from './core/memory/identityGmApi.js';
@@ -9896,12 +9897,6 @@ function _renderEditableVal(cur, max, kindCur, kindMax, key) {
  * 布局: 角色名(+Lv+极简状态徽章+货币) | XP条 | 属性条 | 详情chip(仅 .expanded 时显示)
  * 编辑入口：所有数值文本旁同时渲染 input（默认 hidden，由 .horae-rpg-hud.editing 接管）
  */
-const _HUD_REALM_BASE_CULTIVATION = {
-    '炼气': 1000, '筑基': 2000, '结晶': 4000, '金丹': 8000, '具灵': 16000,
-    '元婴': 32000, '化神': 64000, '悟道': 128000, '羽化': 256000, '登仙': 512000,
-    '飞升': Infinity,
-};
-
 /** 取指定角色的 identity（仅主角有效，非主角返回 null） */
 function _getIdentityForCharacter(name) {
     const mc = getContext()?.name1 || '';
@@ -9923,7 +9918,7 @@ function _buildCapsulesHtml(rpg, options = {}) {
         _tags.push('<span class="horae-rpg-hud-tag">' + escapeHtml(_rn) + '</span>');
     } else if (Array.isArray(rpg.cultivation) && rpg.cultivation.length >= 2) {
         const _cur = rpg.cultivation[0];
-        const _seg = _calcCultivationSegmentHud(_cur, _rn);
+        const _seg = calcCultivationSegment(_cur, _rn);
         if (_seg && _seg.phase) {
             const _segStr = (_seg.segMax === Infinity)
                 ? '（' + _seg.segCur + '）'
@@ -9979,30 +9974,6 @@ function _buildCapsulesHtml(rpg, options = {}) {
     }
 
     return _out;
-}
-
-function _calcCultivationSegmentHud(cur, realmName) {
-    if (!realmName || !(realmName in _HUD_REALM_BASE_CULTIVATION)) return null;
-    const max = _HUD_REALM_BASE_CULTIVATION[realmName];
-    if (max === Infinity || realmName === '飞升') {
-        return { phase: null, segCur: cur, segMax: Infinity };
-    }
-    const curSafe = Math.max(0, cur);
-    const r = curSafe / max;
-    if (r < 0.15) {
-        return { phase: '初期', segCur: Math.round(curSafe), segMax: Math.round(0.15 * max) };
-    }
-    if (r < 0.35) {
-        return { phase: '中期', segCur: Math.round(curSafe - 0.15 * max), segMax: Math.round(0.20 * max) };
-    }
-    if (r < 0.60) {
-        return { phase: '后期', segCur: Math.round(curSafe - 0.35 * max), segMax: Math.round(0.25 * max) };
-    }
-    if (realmName === '登仙') {
-        return { phase: '圆满', segCur: Math.round(curSafe - 0.60 * max), segMax: Infinity };
-    }
-    const curClamped = Math.min(curSafe, max);
-    return { phase: '圆满', segCur: Math.round(curClamped - 0.60 * max), segMax: Math.round(0.40 * max) };
 }
 
 function _buildCharHudHtml(name, rpg) {
