@@ -330,21 +330,38 @@ function _resolveNpcEntry(entry, knowledge, npcId, lang) {
     const vis = entry.visibility || 'public';
     if (vis === 'gmOnly') return null;
     const label = _label(entry, lang, true);
+    const hasDisplay = entry.display != null && String(entry.display).trim() !== '';
 
-    // public：始终输出
-    if (vis === 'public') {
-        return { label, value: sanitizeHiddenKeywords(String(entry.value)) };
-    }
-    // revealedAt 有：真相已公开（hidden / discoverable 都适用）
+    // P6.5.3: NPC View = 该 NPC 当前认知
+    // 判定顺序：
+    //   1. gmOnly -> 不输出（已在上方过滤）
+    //   2. revealedAt != null -> value（世界已公开真相）
+    //   3. public -> display 优先，无则 value
+    //   4. hidden/discoverable + 未 reveal:
+    //      4a. known -> hidden: value / discoverable: [隐藏{label}]
+    //      4b. 未 known -> display 优先，无则不输出
+
+    // revealedAt 优先：世界已公开真相
     if (entry.revealedAt) {
         return { label, value: sanitizeHiddenKeywords(String(entry.value)) };
     }
-    // 未 reveal + hidden/discoverable：需 known
-    if (!hasKnown(knowledge, npcId, entry.id)) return null;
-    // hidden + known → NPC 已获真知
-    if (vis === 'hidden') {
-        return { label, value: sanitizeHiddenKeywords(String(entry.value)) };
+    // public: display 优先，无则 value
+    if (vis === 'public') {
+        const v = hasDisplay ? entry.display : entry.value;
+        return { label, value: sanitizeHiddenKeywords(String(v)) };
     }
-    // discoverable + known + 未 reveal → 知道存在，不知内容
-    return { label, value: _hiddenPlaceholder(label, lang) };
+    // 未 reveal + hidden/discoverable
+    const known = hasKnown(knowledge, npcId, entry.id);
+    if (known) {
+        if (vis === 'hidden') {
+            return { label, value: sanitizeHiddenKeywords(String(entry.value)) };
+        }
+        // discoverable + known + 未 reveal -> 知道存在，不知内容
+        return { label, value: _hiddenPlaceholder(label, lang) };
+    }
+    // 未 known：只能看 display，无 display 则不输出
+    if (hasDisplay) {
+        return { label, value: sanitizeHiddenKeywords(String(entry.display)) };
+    }
+    return null;
 }

@@ -311,28 +311,70 @@ Player 是**主角本人视角**，模拟主角当前认知，不是世界真值
 
 ### 5.4 NPC 视角
 
-**按 (visibility, revealedAt, known) 三元组决定**：
+**主体**：剧情中某个具体 NPC（以 npcId 标识）。
 
-| visibility | revealedAt | known | 输出 |
-|---|---|---|---|
-| `public` | — | — | `display` 优先，无则 `value` |
-| `hidden` | `null` | `true` | `value` |
-| `hidden` | `null` | `false` | `display` 优先，无则 **不输出** |
-| `hidden` | 有 | — | `value` |
-| `discoverable` | `null` | `true` | `[隐藏{label}]` |
-| `discoverable` | `null` | `false` | `display` 优先，无则 **不输出** |
-| `discoverable` | 有 | — | `value` |
-| `gmOnly` | — | — | 不输出 |
+**认知**：**该 NPC 当前认知**——由 `npcKnowledge[npcId][entryId].known` 决定。
+
+**统一判定规则**（按顺序）：
+
+1. `gmOnly` → 不输出
+2. `value == null` → 不输出（基础准入）
+3. `revealedAt != null` → 使用 `value`（世界已公开真相）
+4. `public` → `display` 优先，无则 `value`
+5. `hidden` / `discoverable` + 未 reveal + `known = true`：
+   - `hidden` → `value`（NPC 已获真知）
+   - `discoverable` → `[隐藏{label}]`（NPC 察觉存在，不知内容）
+6. `hidden` / `discoverable` + 未 reveal + `known = false`：
+   - `display` 有效 → `display`（NPC 只知对外说法）
+   - 无有效 `display` → **不输出**
+
+**display 有效性定义**（同 §5.1 / §5.2）：
+
+- `display == null` / `undefined` / `''` / `'   '` → 无 display
+- 其余 → 有 display
+
+**完整矩阵**：
+
+| visibility | revealedAt | known | display | 输出 |
+|---|---|---|---|---|
+| `public` | — | — | 有 | `display` |
+| `public` | — | — | 无 | `value` |
+| `public` | 有 | — | 任意 | `value` |
+| `hidden` | `null` | `true` | 任意 | `value` |
+| `hidden` | `null` | `false` | 有 | `display` |
+| `hidden` | `null` | `false` | 无 | **不输出** |
+| `hidden` | 有 | — | 任意 | `value` |
+| `discoverable` | `null` | `true` | 任意 | `[隐藏{label}]` |
+| `discoverable` | `null` | `false` | 有 | `display` |
+| `discoverable` | `null` | `false` | 无 | **不输出** |
+| `discoverable` | 有 | — | 任意 | `value` |
+| `gmOnly` | — | — | 任意 | **不输出** |
 
 **说明**：
 
-- `hidden + known`：NPC 已获真知，看 `value`（NPC 私知，不需要全局 reveal）
-- `hidden + 未 known`：NPC **不知道真相存在**，只知对外说法
-  - 这里的 `display` 是 **NPC 实际持有的公开认知**，不代表 NPC 察觉到有隐藏
-  - 若 `display` 为 `null` → 不输出（NPC 对这条 entry 一无所知）
-- `discoverable + known + 未 reveal`：NPC **察觉到有隐藏**，但不知内容 → `[隐藏{label}]`
-- `discoverable + 未 known`：NPC 完全不知有隐藏，只知对外说法（display 优先，无则不输出）
-- `revealedAt != null`：全局真相已公开，所有 NPC 直接看 `value`（**不再 display 优先**）
+- NPC View 是「该 NPC 当前认知」，不是「世界认知」也不是「主角认知」
+- `hidden + known`：NPC 通过特殊手段（神通 / 鉴定 / 亲历）获得真相 → 看 `value`
+- `hidden + 未 known`：NPC 不知道有隐藏，只知对外说法
+  - 这里的 `display` 是 **NPC 实际持有的公开认知**，不代表 NPC 察觉到隐藏
+  - **不输出 `[隐藏{label}]` 占位**（占位会告知 NPC「存在未知项」，是信息泄露）
+- `discoverable + known + 未 reveal`：NPC **察觉到有异常存在**，但尚未确认真相 → `[隐藏{label}]`
+  - 这是 NPC View 的**特色**：`discoverable` 表示「存在可被发现的异常」，与 `hidden`（世界规则隐藏）不同
+- `revealedAt != null`：全局真相已公开，所有 NPC 直接看 `value`（不再 display 优先）
+- `gmOnly` 永不输出（即使 `known = true`）
+
+**sanitize 层**：
+
+- 所有输出（`value` / `display`）都经过 `sanitizeHiddenKeywords` 脱敏
+- 若角色卡配了 `hiddenKeywords: { '无界灵根': '[隐藏灵根]' }`，则：
+  - `display = '无界灵根'` → 输出 `[隐藏灵根]`
+  - `display = '四系伪灵根'` → 输出 `四系伪灵根`（未配，不误伤）
+  - `display = '对外：四系伪灵根'` → 输出 `对外：四系伪灵根`（普通前缀不动）
+
+**未来扩展**（不在 P6.5.3 范围）：
+
+- 未来 NPC 可能通过能力 scope（`npc.scope = ['spirit_detect', 'bloodline_sense', ...]`）动态获得部分已知条目的 value 读取权
+- 届时 `known` 语义可能扩展为「known + scope 的双重判定」
+- P6.5.3 只定义基础结构：`known = true/false` 二元
 
 ---
 
