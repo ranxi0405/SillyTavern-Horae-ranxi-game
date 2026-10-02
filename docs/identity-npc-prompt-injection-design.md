@@ -141,21 +141,38 @@ P7.5 设计**接口位置预留**，但**本版返回恒定 true**，不引入 s
 
 ### 4.3 代码注入点（设计指引，不写代码）
 
-在 `core/horaeManager.js` 的 `generateCompactPrompt` 内，`[当前场景NPC]` 段 push 之后：
+**实现位置**：`index.js` 的 `onPromptReady` 内，**与 P5 的 `renderIdentityAiSection` 同层**。
 
-    if (sendCharacters) {
-        // ... 现有 [当前场景NPC] 段渲染 ...
-        
-        const npcKnowledgeSection = this._generateNpcKnowledgeSection(state);
-        if (npcKnowledgeSection) {
-            lines.push(`\n[${L('NPC 认知', ...)}]`);
-            lines.push(npcKnowledgeSection);
-        }
-    }
+**核心原则**（P7.5 硬约束）：Identity View 属于 **Prompt 视图层**，由 `index.js` 负责组合；`horaeManager.js` **不直接消费** `identityView`。
 
-- **不新增开关**：与 `sendCharacters` 共用
+**理由**：P5 的 `renderIdentityAiSection` 已在 `index.js` 调用；`horaeManager.js` 目前不 import `identityView.js`（保持"世界状态管理器"职责）；若强行引入会改变依赖图并可能触发循环。
+
+伪代码（`index.js` 内，见 §4.4）：
+
+    // index.js · onPromptReady（与 P5 的 renderIdentityAiSection 同层）
+    const dataPrompt = sanitizeHiddenKeywords(_rawSplit.mainPrompt);
+    const identitySection = renderIdentityAiSection(chat?.[0]?.horae_meta?.identity, { lang: horaeManager._getAiOutputLang() });
+    const npcKnowledgeSection = _generateNpcKnowledgeSection(
+        chat?.[0]?.horae_meta?.identity,
+        chat?.[0]?.horae_meta?.npcKnowledge,
+        horaeManager.getLatestState(0),
+        { lang: horaeManager._getAiOutputLang() }
+    );
+    const dataPromptWithIdentity = identitySection ? `${identitySection}\n\n${dataPrompt}` : dataPrompt;
+    const dataPromptWithBoth = npcKnowledgeSection ? `${dataPromptWithIdentity}\n\n${npcKnowledgeSection}` : dataPromptWithIdentity;
+
+- **不新增开关**：与 `sendCharacters` 语义对齐（无 NPC 或无知识 → 整段不输出）
 - **不新增段头到 stable prompt**：保持动态段与现有缓存策略一致
-- **不新增函数到 `identityView.js`**：P7.5 新增 `_generateNpcKnowledgeSection` 属 `horaeManager` 内部（Prompt 层）
+- **不修改 `identityView.js`**：`_generateNpcKnowledgeSection` 是 **`index.js` 内部函数**，只调用 `renderIdentityNpcRows`，不重复实现 View 逻辑
+- **不修改 `horaeManager.js`**：不引入 `identityView` 依赖，保持"世界状态管理器"职责
+
+### 4.4 段内顺序（Q3 决策）
+
+StableRulesPrompt → [角色固有设定] → [当前状态快照] → **[NPC 认知]** → recallPrompt → combinedPrompt
+
+**语义顺序**：稳定规则 → 世界/状态数据 → Identity AI View（天道已知） → NPC Knowledge View（NPC 已知） → Recall → 当前对话。
+
+**理由**：天道视角先提供完整事实，NPC 视角随后限制角色认知，两者相邻，AI 更容易理解区别。
 
 ---
 
@@ -372,7 +389,7 @@ P7.5 为这个方向**预留接口位置**，但**本版不实现**：
         return true;
     }
 
-- 位置：`horaeManager.js` 内部（非导出）
+- 位置：`index.js` 内部（非导出）
 - 调用点：§6.2 第二层过滤
 - 参数：`entry` / `npcId` / `npcState`（当前不需要 `npcState`，但保留签名空间）
 
@@ -393,7 +410,7 @@ P7.5 为这个方向**预留接口位置**，但**本版不实现**：
 
 | 阶段 | 内容 | 依赖 |
 |---|---|---|
-| **P7.5.1** | `generateCompactPrompt` 加 `[NPC 认知]` 段（不含 scope） | 本文档定稿 |
+| **P7.5.1** | `index.js` 加 `[NPC 认知]` 段（不含 scope） | 本文档定稿 |
 | **P7.5.2** | （可选）加 `sendNpcKnowledge` 开关 | P7.5.1 使用后评估 |
 | **P7.5.x** | scope 扩展 | 特殊 NPC 需求出现时 |
 
@@ -465,9 +482,9 @@ P7.5.1 是核心，P7.5.2 视需而定，P7.5.x 后置。
     │  · 总 400 字符裁剪                             │
     └────────────────────────────────────────────────┘
          ↓
-    generateCompactPrompt 内 [NPC 认知] 段
+    index.js onPromptReady 内 [NPC 认知] 段
          ↓
-    dataPrompt（与其他动态段并列）
+    dataPromptWithIdentity（与 identity AI section 相邻）
          ↓
     API Payload
 
