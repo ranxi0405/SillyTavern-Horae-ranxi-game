@@ -17,6 +17,7 @@ import { DirectorStore } from './core/memory/directorStore.js';
 import { ThreadStore } from './core/memory/threadStore.js';
 import { sanitizeHiddenKeywords, setActiveHiddenMap } from './core/memory/hiddenKeywords.js';
 import { renderIdentityAiSection } from './core/memory/identityView.js';
+import { generateNpcKnowledgeSection } from './core/memory/identityNpcPrompt.js';
 import { calcCultivationSegment } from './core/rpgUtils.js';
 import { runDiscovery } from './core/memory/identityDiscovery.js';
 import { validateIdentity, normalizeIdentity, emptyIdentity, isIdentityEmpty } from './core/memory/identityStore.js';
@@ -21588,6 +21589,17 @@ async function onPromptReady(eventData) {
             ? `${_identityAiSection}\n\n${dataPrompt}`
             : dataPrompt;
 
+        // P7.5: NPC 认知段（NPC Knowledge View）
+        const _npcKnowledgeSection = generateNpcKnowledgeSection(
+            chat?.[0]?.horae_meta?.identity,
+            chat?.[0]?.horae_meta?.npcKnowledge,
+            horaeManager.getLatestState(0),
+            { lang: horaeManager._getAiOutputLang(), userName: getContext()?.name1 || '' }
+        );
+        const dataPromptWithBoth = _npcKnowledgeSection
+            ? `${dataPromptWithIdentity}\n\n${_npcKnowledgeSection}`
+            : dataPromptWithIdentity;
+
         let recallPrompt = '';
         if (skipVectorRecallOnce) {
             console.log('[Horae] Internal no-recall marker detected, skip vector recall for this request');
@@ -21643,8 +21655,8 @@ async function onPromptReady(eventData) {
 // 固定规则单独提前注入；动态数据继续放在当前 USER 后面；
 // 反转述规则 + 上一条 USER 引用最后注入。
 const dynamicPrompt = recallPrompt
-    ? `${dataPromptWithIdentity}\n${recallPrompt}`
-    : dataPromptWithIdentity;
+    ? `${dataPromptWithBoth}\n${recallPrompt}`
+    : dataPromptWithBoth;
 
 const combinedPrompt = sanitizeHiddenKeywords(`${dynamicPrompt}${antiParaRef}`);
         const positionRaw = parseInt(settings.injectionPosition, 10);
