@@ -27,6 +27,13 @@
 
 const SIMILARITY_THRESHOLD = 0.4;
 
+// ── 污染防护（防把长文本/代码/Horae 结构化输出误存为长期要求） ──
+const MAX_DIRECTOR_NOTE_LEN = 500;
+const HORAE_TAG_RE = /<\/?horae(?:event|_rpg)?>/i;
+const CODE_BLOCK_RE = /(?:^|\n)\s*(?:console\.log|function\s*\(|\(async function|\(function|window\.\w+\s*=)/;
+const META_FIELD_RE = /(?:^|\n)\s*(time|location|atmosphere|scene_desc|characters|costume|item[!-]{0,2}|affection|npc|agenda-?|rel|mood|event)\s*[:：]/gi;
+const META_FIELD_MIN_DISTINCT = 3;
+
 const DIRECTOR_CATEGORIES = {
     pacing:     /节奏|太快|太慢|太琐碎|推进|一步到位|跳跃|拖沓|压缩|详略/,
     world:      /世界.{0,10}(活|运转|时间线|回响|规律|自转)|NPC.{0,5}独立|不围绕|世界是活/,
@@ -93,6 +100,17 @@ export class DirectorStore {
         if (!text || typeof text !== 'string') return null;
         const t = text.trim();
         if (t.length < 3) return null;
+
+        // 污染防护：超长文本
+        if (t.length > MAX_DIRECTOR_NOTE_LEN) return null;
+
+        // 污染防护：Horae 标签 / 代码块
+        if (HORAE_TAG_RE.test(t)) return null;
+        if (CODE_BLOCK_RE.test(t)) return null;
+
+        // 污染防护：多字段元数据（≥3 个不同字段，说明是复制的 Horae 块）
+        if (DirectorStore._countDistinctMetaFields(t) >= META_FIELD_MIN_DISTINCT) return null;
+
         if (this.isQuery(t)) return null;
 
         for (const [category, re] of Object.entries(DIRECTOR_CATEGORIES)) {
@@ -101,6 +119,20 @@ export class DirectorStore {
             }
         }
         return null;
+    }
+
+    /** 统计文本中出现的不同元数据字段数（用于识别复制的 Horae 结构块） */
+    static _countDistinctMetaFields(text) {
+        if (!text || typeof text !== 'string') return 0;
+        const re = new RegExp(META_FIELD_RE.source, 'gi');
+        const fields = new Set();
+        for (const m of text.matchAll(re)) {
+            let name = String(m[1] || '').toLowerCase();
+            if (name.startsWith('item')) name = 'item';
+            if (name === 'agenda-') name = 'agenda';
+            if (name) fields.add(name);
+        }
+        return fields.size;
     }
 
     /** bigram 集合 */
@@ -130,6 +162,10 @@ export class DirectorStore {
     commit({ category, text, source = '' }) {
         if (!category || !text) {
             throw new Error('DirectorStore.commit: category/text required');
+        }
+        // 污染防护：兜底长度校验（即使 detect 放过也不允许超长写入）
+        if (typeof text === 'string' && text.length > MAX_DIRECTOR_NOTE_LEN) {
+            throw new Error('DirectorStore.commit: text too long (' + text.length + ' > ' + MAX_DIRECTOR_NOTE_LEN + ')');
         }
         const slot = this._ensureSlot();
         if (!slot) throw new Error('DirectorStore.commit: no slot');
