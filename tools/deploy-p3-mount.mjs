@@ -18,6 +18,8 @@ const REL_FILES = [
     'core/memory/npcKnowledge.js',
     'core/memory/identitySchemaVersion.js',
     'core/memory/identityGmApi.js',
+    'core/memory/identityNpcPrompt.js',
+    'core/memory/directorStore.js',
 ];
 const BAK_PREFIX = '.bak-p3-deploy-';
 const args = process.argv.slice(2);
