@@ -66,6 +66,27 @@
 
 ---
 
+### 2026-10-03 | 🔴 | ✅ 已修
+- **现象**：`horaeDebugChat[2]` 出现 934 字《问道长生》作者注释，含"无界灵根 / 无界道体"字面值，AI 在玩家可见正文泄漏
+- **涉及模块**：ST 原生 Author's Note（`chat_metadata.note_prompt`），非 Horae 代码
+- **复现**：对话中玩家问及主角资质，AI 正文直接写出"无界灵根"
+- **处理**：
+  - 根因：`note_prompt` 显式包含隐藏真相字面值，`note_interval=1 / note_position=0 / note_role=0` → 每轮作为独立 system 消息常驻注入
+  - 泄漏链：`chat_metadata.note_prompt` → `authors-note.js getAuthorsNote()` → `script.js` AN 注入 → `dbg[2]`（role=system）→ 主模型 → 玩家可见正文
+  - 已排除：`char.*` 字段 / `character_book` / World Info / Horae 源码硬编码 / P5 `[角色固有设定]` / P7.5.1 `[NPC 认知]`
+  - 修复：仅重写当前聊天 `note_prompt` 的【隐藏设定】段
+    - 移除字面值 `无界灵根` / `无界道体`
+    - 移除与 `identity.spiritRoot.display` 冲突的具体值 `"杂灵根"`
+    - 保留全部行为约束（认知隔离 / 测灵不暴露 / NPC 不得提及 / 异常仅作线索）
+    - 新增首句"此为天道层面的真相，仅天道知晓"
+  - 验证：
+    - `noteHasSpiritRoot / noteHasConstitution / noteHasZa === false`
+    - `dbg2HasSpiritRoot / dbg2HasConstitution / dbg2HasZa === false`
+    - `dbg[2].role === 'system'`、`dbg[2].len === 935`、全部公开规则段保留
+    - `[角色固有设定]` 仍由 Identity 正常输出 `灵根 = 四系伪灵根 / 体质 = 凡体`
+  - 架构约束：Identity 继续作为 `无界灵根 / 无界道体` 的 canonical truth owner；未来 reveal 走 Identity reveal 机制（P6.5），不通过 AN
+  - 未改动：Horae 代码 / World Info / Identity schema / P7.5.1 / NPC Knowledge
+
 ## 观察中的问题
 
 （实际游戏中遇到问题后，把现象记录在此，待分析）
