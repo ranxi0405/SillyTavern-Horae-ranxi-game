@@ -23,7 +23,7 @@
 
 ## 三、当前阶段
 
-**封存 + 实际游玩验证阶段（v0.1-refactor-complete）**
+**封存 + 实际游玩验证阶段（v0.2-refactor-complete）**
 
 核心架构重构已完成，当前版本达到稳定基线。
 
@@ -572,10 +572,10 @@ Prompt 投影      → onPromptReady（固定前缀 + 动态区）
 
 **本阶段结束基线**
 
-- **HEAD**：`6f719df`
+- **HEAD**：`dd2facb`
 - **运行目录**：`I:/AI/SillyTavern-1.19.0/public/scripts/extensions/third-party/SillyTavern-Horae` 已部署新代码
 - **核心重构阶段正式结束**，下一阶段为"封存 + 实际游玩验证"
-- **封存 Tag**：`v0.1-refactor-complete`
+- **封存 Tag**：`v0.2-refactor-complete`
 
 
 ## 六、未完成事项
