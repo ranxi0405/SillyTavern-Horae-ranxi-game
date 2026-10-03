@@ -2124,7 +2124,7 @@ if (sendCharacters) {
             ? ([...allEventMatches].reverse().find(m => /^event:/m.test(m[1])) || allEventMatches[allEventMatches.length - 1])
             : allEventMatches[0] || null;
         const tableMatches = [...message.matchAll(/<horaetable[:：]\s*(.+?)>([\s\S]*?)<\/horaetable(?:[:：][^>]*)?>/gi)];
-        const rpgMatches = [...message.matchAll(/<horaerpg>([\s\S]*?)<\/horaerpg>/gi)];
+        const rpgMatches = [...message.matchAll(/<horaee?rpg>([\s\S]*?)<\/horaee?rpg>/gi)];
         
         if (!match && !eventMatch && tableMatches.length === 0 && rpgMatches.length === 0) return null;
         
