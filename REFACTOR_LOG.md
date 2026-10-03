@@ -23,9 +23,17 @@
 
 ## 三、当前阶段
 
-**大方向验证（Alpha / 黑盒测试）**
+**封存 + 实际游玩验证阶段（v0.1-refactor-complete）**
 
-所有改动都是方向性验证，细节问题在实际游戏中逐步发现和修复。
+核心架构重构已完成，当前版本达到稳定基线。
+
+**暂停继续堆功能**，转为：
+- 实际游玩《问道长生》
+- 参照《觅长生》《鬼谷八荒》等修仙游戏
+- 以玩家视角记录：真正有趣的机制 / 重复疲劳的机制 / 值得吸收 / 应该避免
+- 基于实际体验决定下一轮开发方向
+
+所有新功能开发暂停，仅做阻塞性 bug 修复。
 
 ## 四、分层架构
 
@@ -507,9 +515,77 @@ Prompt 投影      → onPromptReady（固定前缀 + 动态区）
 - uid=12：与 P3 一致
 
 **涉及文件**：worldbook-v0.9.json, tools/patch-w4-worldbook-boundary-fix.mjs
+
+### 2026-10-02 ~ 2026-10-03
+
+**本阶段主题**：从"核心重构阶段"过渡到"稳定基线 + 封存"。
+
+---
+
+#### TODO-A · ST Author's Note 泄漏隐藏真相
+
+- **状态**：✅ 已关闭
+- **commit**：8f3cbf5（仅落文档 ISSUES.md）
+- **现象**：`horaeDebugChat[2]` 出现 934 字《问道长生》作者注释，含"无界灵根 / 无界道体"字面值，AI 在玩家可见正文泄漏
+- **根因**：ST 原生 Author's Note，`chat_metadata.note_prompt` 显式包含隐藏真相字面值；`note_interval=1 / note_position=0 / note_role=0` → 每轮作为独立 system 消息常驻注入
+- **泄漏链**：`chat_metadata.note_prompt` → `authors-note.js getAuthorsNote()` → `script.js` AN 注入 → `dbg[2]` → 主模型 → 玩家可见正文
+- **已排除**：`char.*` 字段 / `character_book` / World Info / Horae 源码硬编码 / P5 `[角色固有设定]` / P7.5.1 `[NPC 认知]`
+- **修复**：仅重写当前聊天 `note_prompt` 的【隐藏设定】段
+  - 移除字面值 `无界灵根` / `无界道体`
+  - 移除与 `identity.spiritRoot.display` 冲突的具体值 `"杂灵根"`
+  - 保留全部行为约束（认知隔离 / 测灵不暴露 / NPC 不得提及 / 异常仅作线索）
+- **未改动**：Horae 代码 / World Info / Identity schema / P7.5.1 / NPC Knowledge
+- **无 Git 代码改动**：`chat_metadata` 属运行时数据
+
+#### TODO-C · deploy REL_FILES 补齐
+
+- **状态**：✅ 已关闭
+- **commit**：ccc1724
+- **现象**：`tools/deploy-p3-mount.mjs` 的 `REL_FILES` 缺 `identityNpcPrompt.js` 与 `directorStore.js`
+- **修复**：补齐两行到 REL_FILES
+- **改动**：单文件 +2 行
+
+#### TODO-E · RPG `<horaee?rpg>` typo 兼容
+
+- **状态**：✅ 已关闭
+- **commit**：6f719df
+- **现象**：AI 偶发把 `<horaerpg>`（8 字符）写成 `<horaerpg>`（9 字符），parser 严格匹配只认 8 字符，导致 `_rpgChanges` 未生成，RPG State 不更新
+- **根因**：模型原始输出 typo（swipe[0] 层确认），非后处理、非 parser bug、非 Prompt 内容错误
+- **修复**：`core/horaeManager.js` 单行，`/<horaerpg>/` → `/<horaee?rpg>/`
+- **协议语义**：正式协议仍为 `<horaerpg>`；`<horaerpg>` 仅作历史/异常输入兼容
+- **修复范围**：收敛为 1 处 1 行
+- **未改动**：Prompt / vector / 摘要 / index.js / injectHoraeRpgLinePatch / _stripHoraeAnalysisInput
+- **未做**：后处理替换 / 历史正文改写
+
+**TODO-E 最终验收结果**
+
+- ✅ `<horaee?rpg>` typo 可被 parser 兼容（单测 5/5 通过）
+- ✅ `_rpgChanges` 正确生成（msg 215: `bars.冉汐 = { hp:[260,null], mp:[240,null], sp:[285,null] }`）
+- ✅ replay/rebuild 可恢复历史 RPG 状态
+- ✅ `getRpgState()` / HUD 状态正确（msg 215 恢复为 hp=[260,300]/mp=[240,300]/sp=[285,285]）
+- ✅ `<horaeevent>` 不受影响
+- ✅ 原始 `message.mes` 未被改写（typo 保留，码点级确认）
+- ✅ runtime 已正确部署（source/runtime hash 一致 `d8678f...`）
+- ✅ 未修改 Prompt / vector / 摘要 / 后处理
+
+---
+
+**本阶段结束基线**
+
+- **HEAD**：`6f719df`
+- **运行目录**：`I:/AI/SillyTavern-1.19.0/public/scripts/extensions/third-party/SillyTavern-Horae` 已部署新代码
+- **核心重构阶段正式结束**，下一阶段为"封存 + 实际游玩验证"
+- **封存 Tag**：`v0.1-refactor-complete`
+
+
 ## 六、未完成事项
 
+**本阶段封存时遗留（不阻塞封存）**
+
 - Vector 系统当前是独立层，未与 FactStore 打通
+- P7.5.1 真实 NPC E2E 尚未验证（需独立 fixture，禁止污染真实存档）
+- TODO-B：`characters_present` 偶发 `characters:A|B|C` 形态污染（独立 parser/data-format 问题）
+- TODO-D（待立）：`factStore.js` / `stateStore.js` / `threadStore.js` 是否纳入 `REL_FILES` 的评估
 
 ## 七、交接说明
 
